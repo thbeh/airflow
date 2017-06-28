@@ -48,14 +48,6 @@ def GetDefaultExecutor():
     return DEFAULT_EXECUTOR
 
 
-class Executors:
-    LocalExecutor = "LocalExecutor"
-    SequentialExecutor = "SequentialExecutor"
-    CeleryExecutor = "CeleryExecutor"
-    DaskExecutor = "DaskExecutor"
-    MesosExecutor = "MesosExecutor"
-    KubernetesExecutor = "KubernetesExecutor"
-
 
 
 def _get_executor(executor_name):

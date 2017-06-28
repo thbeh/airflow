@@ -19,9 +19,6 @@ from airflow.executors.base_executor import BaseExecutor
 from airflow.executors.local_executor import LocalExecutor
 from airflow.executors.sequential_executor import SequentialExecutor
 
-from airflow.exceptions import AirflowException
-from airflow.utils.log.logging_mixin import LoggingMixin
-
 DEFAULT_EXECUTOR = None
 
 def _integrate_plugins():
@@ -68,7 +65,7 @@ def _get_executor(executor_name):
     elif executor_name == Executors.MesosExecutor:
         from airflow.contrib.executors.mesos_executor import MesosExecutor
         return MesosExecutor()
-    elif executor_name == Executors.KubernetesExecutor:
+    elif executor_name == 'KubernetesExecutor':
         from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
         return KubernetesExecutor()
     else:

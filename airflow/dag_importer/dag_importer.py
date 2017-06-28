@@ -31,5 +31,6 @@ def _import_cinder(self):
     spec['provisioner'] = 'kubernetes.io/cinder'
     spec['parameters']['type'] = 'fast'
     spec['availability'] = 'nova'
+    dag_import_spec = spec
 
 

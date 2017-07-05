@@ -37,13 +37,13 @@ class Pod:
     def __init__(
             self,
             image,
-            envs={},
-            cmds=[],
-            secrets=[],
-            labels={},
-            node_selectors={},
-            kube_req_factory=None,
-            name=None,
+            envs,
+            cmds,
+            secrets,
+            labels,
+            node_selectors,
+            kube_req_factory,
+            name,
             namespace='default',
             result=None):
         self.image = image
@@ -58,7 +58,8 @@ class Pod:
         self.namespace = namespace
         self.logger = logging.getLogger(self.__class__.__name__)
         if not isinstance(self.kube_req_factory, KubernetesRequestFactory):
-            raise AirflowException('`kube_req_factory`  should implement KubernetesRequestFactory')
+            raise AirflowException('`kube_req_factory`'
+                                   '  should implement KubernetesRequestFactory')
 
     def launch(self):
         """
@@ -68,7 +69,8 @@ class Pod:
         req = self.kube_req_factory.create(self)
         print(json.dumps(req))
         resp = k8s_beta.create_namespaced_job(body=req, namespace=self.namespace)
-        self.logger.info("Job created. status='%s', yaml:\n%s" % (str(resp.status), str(req)))
+        self.logger.info("Job created. status='%s', yaml:\n%s"
+                         % (str(resp.status), str(req)))
         for i in range(1, self.pod_timeout):
             time.sleep(10)
             self.logger.info("Waiting for success")

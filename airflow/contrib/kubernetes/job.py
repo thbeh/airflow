@@ -1,16 +1,4 @@
-# -*- coding: utf-8 -*-
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
 
 from airflow import AirflowException
 from kubernetes import client, config
@@ -39,11 +27,11 @@ class Job:
     def __init__(
             self,
             image,
-            envs={},
-            cmds=[],
-            secrets=[],
-            labels={},
-            node_selectors={},
+            envs,
+            cmds,
+            secrets,
+            labels,
+            node_selectors,
             kube_req_factory=None,
             name=None,
             namespace='default',
@@ -60,7 +48,8 @@ class Job:
         self.namespace = namespace
         self.logger = logging.getLogger(self.__class__.__name__)
         if not isinstance(self.kube_req_factory, KubernetesRequestFactory):
-            raise AirflowException('`kube_req_factory`  should implement KubernetesRequestFactory')
+            raise AirflowException('`kube_req_factory` '
+                                   ' should implement KubernetesRequestFactory')
 
     def launch(self):
         """
@@ -70,7 +59,8 @@ class Job:
         req = self.kube_req_factory.create(self)
         print(json.dumps(req))
         resp = k8s_beta.create_namespaced_job(body=req, namespace=self.namespace)
-        self.logger.info("Job created. status='%s', yaml:\n%s" % (str(resp.status), str(req)))
+        self.logger.info("Job created. status='%s', yaml:\n%s"
+                         % (str(resp.status), str(req)))
 
     def _kube_client(self):
         config.load_incluster_config()

@@ -1,16 +1,30 @@
+from airflow import configuration
+
 
 dag_import_spec = {}
-def import_dags(self):
-    # self._import_cinder()
-    self._import_hostpath()
 
-def _import_hostpath(self):
+
+def import_dags():
+    if configuration.has_option('core','kube_mode'):
+        mode = configuration.get('core','kube_mode')
+        dag_function(mode=mode)()
+
+
+def dag_function(mode):
+    return {
+        'git': _import_git,
+        'cinder': _import_cinder
+    }.get(mode, _import_hostpath)
+
+
+def _import_hostpath():
     global dag_import_spec
     spec = {'name': 'shared-data', 'hostPath': {}}
     spec['hostPath']['path'] = '/tmp/dags'
     dag_import_spec = spec
 
-def _import_cinder(self):
+
+def _import_cinder():
     '''
     kind: StorageClass
     apiVersion: storage.k8s.io/v1
@@ -34,3 +48,15 @@ def _import_cinder(self):
     dag_import_spec = spec
 
 
+def _import_nfs():
+    pass
+
+
+def _import_git():
+    global dag_import_spec
+    git_link = configuration.get('core', 'k8s_git_link')
+    revision = configuration.get('core', 'k8s_git_revision')
+    spec = {'name': 'shared-data', 'gitRepo': {}}
+    spec['gitRepo']['repository'] = git_link
+    spec['gitRepo']['revision'] = revision
+    dag_import_spec = spec

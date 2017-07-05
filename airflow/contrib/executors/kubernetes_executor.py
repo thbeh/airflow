@@ -31,13 +31,15 @@ from airflow.utils.state import State
 
 
 def _prep_command_for_container(command):
-    """
-
-    When creating a kubernetes pod, the yaml expects the command in the form of ["cmd","arg","arg","arg"...]
-    This function splits the command string into tokens and then matches it to the convention.
-
-    :param command: 
-    :return: 
+    """  
+    When creating a kubernetes pod, the yaml expects the command
+    in the form of ["cmd","arg","arg","arg"...]
+    This function splits the command string into tokens 
+    and then matches it to the convention.
+    
+    :param command:
+    
+    :return:
     """
     return '"' + '","'.join(command.split(' ')[1:]) + '"'
 
@@ -56,8 +58,9 @@ class AirflowKubernetesScheduler(object):
     def run_next(self, next_job):
         """
 
-        The run_next command will check the task_queue for any un-run jobs. It will then create a unique job-id,
-        launch that job in the cluster, and store relevent info in the current_jobs map so we can track the job's
+        The run_next command will check the task_queue for any un-run jobs.
+        It will then create a unique job-id, launch that job in the cluster,
+        and store relevent info in the current_jobs map so we can track the job's
         status
 
         :return: 

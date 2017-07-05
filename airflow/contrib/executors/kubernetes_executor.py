@@ -81,8 +81,9 @@ class AirflowKubernetesScheduler(object):
     def sync(self):
         """
 
-        The sync function checks the status of all currently running kubernetes jobs. If a job is completed, it's
-        status is placed in the result queue to be sent back to the scheduler.
+        The sync function checks the status of all currently running kubernetes jobs.
+        If a job is completed, it's status is placed in the result queue to 
+        be sent back to the scheduler.
 
         :return: 
         """
@@ -109,7 +110,8 @@ class AirflowKubernetesScheduler(object):
     def _create_job_id_from_key(self, key, epoch_time):
         """
 
-        Kubernetes pod names must unique and match specific conventions (i.e. no spaces, period, etc.)
+        Kubernetes pod names must unique and match specific conventions 
+        (i.e. no spaces, period, etc.)
         This function creates a unique name using the epoch time and internal counter
 
         :param key: 
@@ -118,13 +120,17 @@ class AirflowKubernetesScheduler(object):
         """
 
         keystr = '-'.join([str(x).replace(' ', '-') for x in key[:2]])
-        job_id = (keystr + '-' + str(self._task_counter) + '-' + str(epoch_time)).replace('_', '-')
+        job_fields = [keystr, str(self._task_counter), str(epoch_time)]
+        unformatted_job_id = '-'.join(job_fields)
+        job_id = unformatted_job_id.replace('_', '-')
         return job_id
 
     def _set_host_id(self, key):
         (dag_id, task_id, ex_time) = key
         session = settings.Session()
-        item = session.query(TaskInstance).filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
+        item = session.query(TaskInstance)\
+            .filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
+
         host_id = item.hostname
         print("host is {}".format(host_id))
 

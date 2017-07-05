@@ -69,7 +69,8 @@ class AirflowKubernetesScheduler(object):
         (key, command) = next_job
         logging.info("running for command {}".format(command))
         epoch_time = calendar.timegm(time.gmtime())
-        command_list = ["/usr/local/airflow/entrypoint.sh"] + command.split()[1:] + ['-km']
+        command_list = ["/usr/local/airflow/entrypoint.sh"] + command.split()[1:] + \
+                       ['-km']
         self._set_host_id(key)
         pod_id = self._create_job_id_from_key(key=key, epoch_time=epoch_time)
         self.current_jobs[pod_id] = key
@@ -131,7 +132,7 @@ class AirflowKubernetesScheduler(object):
     def _set_host_id(self, key):
         (dag_id, task_id, ex_time) = key
         session = settings.Session()
-        item = session.query(TaskInstance)\
+        item = session.query(TaskInstance) \
             .filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
 
         host_id = item.hostname
@@ -171,7 +172,11 @@ class KubernetesExecutor(BaseExecutor):
             self.running.pop(key)
         self.event_buffer[key] = state
         (dag_id, task_id, ex_time) = key
-        item = self._session.query(TaskInstance).filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
+        item = self._session.query(TaskInstance).filter_by(
+            dag_id=dag_id,
+            task_id=task_id,
+            execution_date=ex_time).one()
+
         item.state = state
         self._session.add(item)
         self._session.commit()

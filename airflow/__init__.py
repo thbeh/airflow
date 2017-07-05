@@ -80,7 +80,6 @@ from airflow import hooks
 from airflow import executors
 from airflow import macros
 
-dag_importer._integrate_plugins()
 operators._integrate_plugins()
 hooks._integrate_plugins()
 executors._integrate_plugins()

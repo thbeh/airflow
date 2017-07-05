@@ -2,6 +2,7 @@ from airflow import AirflowException
 import logging
 print("starting dag integration")
 logging.info("starting dag integ")
+from airflow import configuration
 
 def _integrate_plugins():
     pass
@@ -24,9 +25,11 @@ dag_import_spec = {}
 def import_dags():
     # self._import_cinder()
     _import_hostpath()
+    # _import_git()
 
 
 def _import_hostpath():
+    logging.info("importing dags locally")
     global dag_import_spec
     spec = {'name': 'shared-data', 'hostPath': {}}
     spec['hostPath']['path'] = '/tmp/dags'
@@ -54,5 +57,15 @@ def _import_cinder():
     spec['provisioner'] = 'kubernetes.io/cinder'
     spec['parameters']['type'] = 'fast'
     spec['availability'] = 'nova'
+
+def _import_git():
+    logging.info("importing dags from github")
+    global dag_import_spec
+    git_link = configuration.get('core', 'k8s_git_link')
+    revision = configuration.get('core', 'k8s_git_revision')
+    spec = {'name': 'shared-data', 'gitRepo': {}}
+    spec['gitRepo']['repository'] = git_link
+    spec['gitRepo']['revision'] = revision
+    dag_import_spec = spec
 
 import_dags()

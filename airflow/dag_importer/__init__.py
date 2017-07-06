@@ -76,6 +76,3 @@ def _import_git():
     spec['gitRepo']['repository'] = git_link
     spec['gitRepo']['revision'] = revision
     dag_import_spec = spec
-
-
-import_dags()

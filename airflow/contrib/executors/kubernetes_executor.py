@@ -16,7 +16,7 @@ import calendar
 import logging
 import time
 
-from airflow.contrib.kubernetes.job import Job
+from airflow.contrib.kubernetes.kubernetesjob import KubernetesJobBuilder
 from airflow.contrib.kubernetes.kubernetes_helper import KubernetesHelper
 from queue import Queue
 
@@ -36,10 +36,11 @@ def _prep_command_for_container(command):
     in the form of ["cmd","arg","arg","arg"...]
     This function splits the command string into tokens 
     and then matches it to the convention.
-    
+
     :param command:
     
     :return:
+    
     """
     return '"' + '","'.join(command.split(' ')[1:]) + '"'
 
@@ -64,6 +65,7 @@ class AirflowKubernetesScheduler(object):
         status
 
         :return: 
+        
         """
         logging.info('job is {}'.format(str(next_job)))
         (key, command) = next_job
@@ -74,10 +76,11 @@ class AirflowKubernetesScheduler(object):
         self._set_host_id(key)
         pod_id = self._create_job_id_from_key(key=key, epoch_time=epoch_time)
         self.current_jobs[pod_id] = key
-        pod = Job(image='airflow-slave:latest',
-                  cmds=command_list,
-                  name=pod_id,
-                  kube_req_factory=SimpleJobRequestFactory)
+        pod = KubernetesJobBuilder(
+            image='airflow-slave:latest',
+            cmds=command_list,
+            kub_req_factory=SimpleJobRequestFactory)
+        pod.add_name(pod_id)
         pod.launch()
         self._task_counter += 1
         logging.info("Job created!")
@@ -89,7 +92,8 @@ class AirflowKubernetesScheduler(object):
         If a job is completed, it's status is placed in the result queue to 
         be sent back to the scheduler.
 
-        :return: 
+        :return:
+         
         """
         current_jobs = iter(self.current_jobs.copy())
         for job_id in current_jobs:
@@ -119,8 +123,11 @@ class AirflowKubernetesScheduler(object):
         This function creates a unique name using the epoch time and internal counter
 
         :param key: 
+        
         :param epoch_time: 
+        
         :return: 
+    
         """
 
         keystr = '-'.join([str(x).replace(' ', '-') for x in key[:2]])

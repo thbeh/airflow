@@ -14,7 +14,6 @@
 
 import yaml
 from kubernetes import client, config
-from airflow.utils.state import State
 
 
 class KubernetesHelper(object):

@@ -15,17 +15,37 @@ import unittest
 from airflow.contrib.kubernetes.kubernetesjob import KubernetesJobBuilder
 from airflow.contrib.kubernetes.pod_request import SimpleJobRequestFactory
 from airflow import configuration
+import json
 
-
-
-
-secrets = []
-labels = []
+secrets = {}
+labels = {}
+base_job = {'kind': 'Job',
+            'spec': {
+                'template': {
+                    'spec': {
+                        'restartPolicy': 'Never',
+                        'volumes': [{}], 'containers': [
+                            {'command': ['try', 'this', 'first'],
+                             'image': 'foo.image', 'volumeMounts': [
+                                {
+                                    'mountPath': '/usr/local/airflow/dags',
+                                    'name': 'shared-data'}
+                            ],
+                             'name': 'base',
+                             'imagePullPolicy': 'Never'}
+                        ]
+                    },
+                    'metadata': {'name': 'name'}
+                }
+            },
+            'apiVersion': 'batch/v1', 'metadata': {'name': None}
+            }
 
 
 class KubernetesJobRequestTest(unittest.TestCase):
     job_to_load = None
     job_req_factory = SimpleJobRequestFactory()
+
     def setUp(self):
         configuration.load_test_config()
         self.job_to_load = KubernetesJobBuilder(
@@ -33,8 +53,6 @@ class KubernetesJobRequestTest(unittest.TestCase):
             cmds=['try', 'this', 'first']
         )
 
-
-    def base_test(self):
-        a = self.job_req_factory.create(self.job_to_load)
-        print (a)
-        self.assertEqual(a, 'foo')
+    def test_job_creation_with_base_values(self):
+        base_job_result = self.job_req_factory.create(self.job_to_load)
+        self.assertEqual(base_job_result, base_job)

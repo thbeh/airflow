@@ -20,7 +20,7 @@ from airflow.exceptions import AirflowException
 from airflow.operators.python_operator import PythonOperator
 from airflow.utils.decorators import apply_defaults
 from airflow.contrib.kubernetes.pod_launcher import KubernetesLauncher, KubernetesCommunicationService
-from airflow.contrib.kubernetes.pod_request import SimplePodRequestFactory, ReturnValuePodRequestFactory
+from airflow.contrib.kubernetes.kubernetes_request_factory import SimplePodRequestFactory, ReturnValuePodRequestFactory
 
 
 class PodOperator(PythonOperator):

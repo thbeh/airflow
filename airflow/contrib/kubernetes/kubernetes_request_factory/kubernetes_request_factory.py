@@ -13,12 +13,7 @@
 # limitations under the License.
 
 import logging
-import os
-import time
-import yaml
 from abc import ABCMeta, abstractmethod
-from airflow import AirflowException
-import json
 from airflow import dag_importer
 
 

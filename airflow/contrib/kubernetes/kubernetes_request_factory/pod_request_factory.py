@@ -1,5 +1,6 @@
 from .kubernetes_request_factory import *
-
+import yaml
+from airflow import AirflowException
 
 class SimplePodRequestFactory(KubernetesRequestFactory):
     """
@@ -9,7 +10,7 @@ class SimplePodRequestFactory(KubernetesRequestFactory):
 kind: Pod
 metadata:
   name: job_id
-  labels: 
+  labels:
       type: airflow
 spec:
       containers:

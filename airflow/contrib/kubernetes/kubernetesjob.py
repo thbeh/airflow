@@ -28,13 +28,14 @@ class KubernetesJobBuilder:
         self.kub_req_factory = kub_req_factory
         self.namespace = 'default'
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.env = []
-        self.labels = []
-        self.secrets = []
+        self.envs = {}
+        self.labels = {}
+        self.secrets = {}
+        self.node_selectors=[]
         self.name = None
 
     def add_env_variables(self, env):
-        self.env = env
+        self.envs = env
 
     def add_secrets(self, secrets):
         self.secrets = secrets

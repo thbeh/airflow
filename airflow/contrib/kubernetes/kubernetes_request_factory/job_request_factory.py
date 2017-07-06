@@ -1,11 +1,11 @@
-from .kubernetes_request_factory import *
+import yaml
+import kubernetes_request_factory as req_factory
 
 
-class SimpleJobRequestFactory(KubernetesRequestFactory):
+class SimpleJobRequestFactory(req_factory.KubernetesRequestFactory):
     """
         Request generator for a simple pod.
     """
-
 
     _yaml = """apiVersion: batch/v1
 kind: Job
@@ -29,14 +29,14 @@ spec:
 
     def create(self, pod):
         req = yaml.load(self._yaml)
-        extract_name(pod, req)
-        extract_labels(pod, req)
-        extract_image(pod, req)
-        extract_cmds(pod, req)
+        req_factory.extract_name(pod, req)
+        req_factory.extract_labels(pod, req)
+        req_factory.extract_image(pod, req)
+        req_factory.extract_cmds(pod, req)
         if len(pod.node_selectors) > 0:
-            extract_node_selector(pod, req)
-        extract_secrets(pod, req)
-        attach_volume_mounts(req)
+            req_factory.extract_node_selector(pod, req)
+        req_factory.extract_secrets(pod, req)
+        req_factory.attach_volume_mounts(req)
         return req
 
 

@@ -14,4 +14,4 @@
 
 from airflow import dag_importer
 
-
+dag_importer.import_dags()

@@ -20,7 +20,8 @@ from airflow.contrib.kubernetes.kubernetes_request_factory.kubernetes_request_fa
     import KubernetesRequestFactory
 
 
-class SimplePodRequestFactory(KubernetesRequestFactory):
+
+class SimplePodRequestFactory(kreq.KubernetesRequestFactory):
     """
     Request generator for a simple pod.
     """
@@ -35,6 +36,9 @@ spec:
       command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
   restartPolicy: Never
     """
+
+    def __init__(self):
+        pass
 
     def __init__(self):
         pass

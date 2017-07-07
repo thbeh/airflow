@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 
 import yaml
-from airflow.contrib.kubernetes import kubernetes_request_factory as req_factory
+import kubernetes_request_factory as req_factory
 
 
 class SimpleJobRequestFactory(req_factory.KubernetesRequestFactory):
     """
         Request generator for a simple pod.
     """
+
+    def __init__(self):
+        pass
 
     _yaml = """apiVersion: batch/v1
 kind: Job

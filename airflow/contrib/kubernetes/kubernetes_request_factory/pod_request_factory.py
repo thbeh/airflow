@@ -1,8 +1,9 @@
-from .kubernetes_request_factory import *
+import kubernetes_request_factory as kreq
 import yaml
 from airflow import AirflowException
 
-class SimplePodRequestFactory(KubernetesRequestFactory):
+
+class SimplePodRequestFactory(kreq.KubernetesRequestFactory):
     """
         Request generator for a simple pod.
     """
@@ -20,16 +21,19 @@ spec:
       restartPolicy: Never
 """
 
+    def __init__(self):
+        pass
+
     def create(self, pod):
         req = yaml.load(self._yaml)
-        extract_name(pod, req)
-        extract_labels(pod, req)
-        extract_image(pod, req)
-        extract_cmds(pod, req)
+        kreq.extract_name(pod, req)
+        kreq.extract_labels(pod, req)
+        kreq.extract_image(pod, req)
+        kreq.extract_cmds(pod, req)
         if len(pod.node_selectors) > 0:
-            extract_node_selector(pod, req)
-        extract_secrets(pod, req)
-        extract_volume_secrets(pod, req)
+            kreq.extract_node_selector(pod, req)
+        kreq.extract_secrets(pod, req)
+        kreq.extract_volume_secrets(pod, req)
         return req
 
 

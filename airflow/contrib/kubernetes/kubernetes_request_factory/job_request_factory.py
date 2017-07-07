@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 
 import yaml
-import kubernetes_request_factory as req_factory
+from .kubernetes_request_factory import *
 
 
-class SimpleJobRequestFactory(req_factory.KubernetesRequestFactory):
+class SimpleJobRequestFactory(KubernetesRequestFactory):
     """
         Request generator for a simple pod.
     """
@@ -45,14 +45,14 @@ spec:
 
     def create(self, pod):
         req = yaml.load(self._yaml)
-        req_factory.extract_name(pod, req)
-        req_factory.extract_labels(pod, req)
-        req_factory.extract_image(pod, req)
-        req_factory.extract_cmds(pod, req)
+        extract_name(pod, req)
+        extract_labels(pod, req)
+        extract_image(pod, req)
+        extract_cmds(pod, req)
         if len(pod.node_selectors) > 0:
-            req_factory.extract_node_selector(pod, req)
-        req_factory.extract_secrets(pod, req)
-        req_factory.attach_volume_mounts(req)
+            extract_node_selector(pod, req)
+        extract_secrets(pod, req)
+        attach_volume_mounts(req)
         return req
 
 

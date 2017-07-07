@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 
 import yaml
-import kubernetes_request_factory as req_factory
+from airflow.contrib.kubernetes import kubernetes_request_factory as req_factory
 
 
 class SimpleJobRequestFactory(req_factory.KubernetesRequestFactory):

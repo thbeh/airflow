@@ -29,6 +29,7 @@ import json
 # TODO this is just for proof of concept. remove before merging.
 
 
+
 def _prep_command_for_container(command):
     """  
     When creating a kubernetes pod, the yaml expects the command
@@ -44,21 +45,32 @@ def _prep_command_for_container(command):
     return '"' + '","'.join(command.split(' ')[1:]) + '"'
 
 
-class KubernetesWatcher(object):
-    def __init__(self,namespace, np):
-        self._namespace = namespace
+class KubernetesJobWatcher(multiprocessing.Process, object):
+    def __init__(self,namespace, np, result_queue, watcher_queue):
+        multiprocessing.Process.__init__(self)
+        self.result_queue = result_queue
+        self._watch_function = namespace
         self._watch = watch.Watch()
-        self.np = np
+        self.namespace = np
+        self.watcher_queue = watcher_queue
 
+    def run(self):
+        logging.info("starting watch!")
+        logging.info("running {} with {}".format(str(self._watch_function), self.namespace))
+        for event in self._watch.stream(self._watch_function, self.namespace):
+            job = event['object']
+            self.process_status(job.metadata.name, job.status)
 
-    def watch(self):
-        count = 100
-        print("running {} with {}".format(str(self._namespace), self.np))
-        for event in self._watch.stream(self._namespace, self.np):
-            print("Event: %s %s" % (event['type'], event['object'].metadata.name))
-            count -= 1
-            if not count:
-                self._watch.stop()
+    def process_status(self, job_id, status):
+        if status.failed:
+            logging.info("Event: {} Failed".format(job_id))
+            self.watcher_queue.put((job_id, State.FAILED))
+        elif status.succeeded:
+            logging.info("Event: {} Succeeded".format(job_id))
+            self.watcher_queue.put((job_id, None))
+        elif status.active:
+            logging.info("Event: {} is Running".format(job_id))
+
 
 class AirflowKubernetesScheduler(object):
     def __init__(self,
@@ -71,7 +83,11 @@ class AirflowKubernetesScheduler(object):
         self.current_jobs = {}
         self.running = running
         self._task_counter = 0
+        self.watcher_queue = multiprocessing.Queue()
         self.helper = KubernetesHelper()
+        w = KubernetesJobWatcher(self.helper.api.list_namespaced_job, "default",
+                                 self.result_queue, self.watcher_queue)
+        w.start()
 
     def run_next(self, next_job):
         """
@@ -99,10 +115,13 @@ class AirflowKubernetesScheduler(object):
             kub_req_factory=SimpleJobRequestFactory())
         pod.add_name(pod_id)
         pod.launch()
-        w = KubernetesWatcher(self.helper.api.list_namespaced_job, pod.namespace)
         self._task_counter += 1
+
         logging.info("k8s: Job created!")
-        w.watch()
+
+    def delete_job(self, key):
+        job_id = self.current_jobs[key]
+        self.helper.delete_job(job_id, namespace="default")
 
     def sync(self):
         """
@@ -114,28 +133,20 @@ class AirflowKubernetesScheduler(object):
         :return:
 
         """
-        current_jobs = iter(self.current_jobs.copy())
-        for job_id in current_jobs:
-            key = self.current_jobs[job_id]
-            namespace = 'default'
-            status = self.helper.get_status(job_id, namespace)
-            self.process_status(job_id, key, status)
+        while not self.watcher_queue.empty():
+            self.end_task()
 
-    def process_status(self, job_id, key, status):
-        if status.failed:
-            logging.info("k8s: {} Failed".format(key))
-            self.result_queue.put((key, State.FAILED))
-            self.helper.delete_job(job_id, namespace='default')
+    def end_task(self):
+        job_id, state = self.watcher_queue.get()
+        if job_id in self.current_jobs:
+            key = self.current_jobs[job_id]
+            logging.info("finishing job {}".format(key))
+            namespace = 'default'
+            if state:
+                self.result_queue.put((key, state))
+            self.helper.delete_job(job_id, namespace=namespace)
             self.current_jobs.pop(job_id)
             self.running.pop(key)
-        elif status.succeeded:
-            logging.info("k8s: {} Succeeded".format(key))
-            self.current_jobs.pop(job_id)
-            self.running.pop(key)
-        elif status.active:
-            logging.info("{} is Running".format(job_id))
-        logging.info("k8s: current is {}".format([x.keys for x in list(self.current_jobs)]
-                                                 ))
 
     def _create_job_id_from_key(self, key, epoch_time):
         """
@@ -169,6 +180,7 @@ class AirflowKubernetesScheduler(object):
 
 
 class KubernetesExecutor(BaseExecutor):
+
     def start(self):
         logging.info('k8s: starting kubernetes executor')
         self.task_queue = Queue()
@@ -190,10 +202,8 @@ class KubernetesExecutor(BaseExecutor):
             logging.info("currently a job is running")
         else:
             logging.info("queue ready, running next")
-            logging.info("k8s: queue is: {}".format(self.task_queue.queue))
             if not self.task_queue.empty():
                 (key, command) = self.task_queue.get()
-                logging.info("k8s finally starting task {}".format(key))
                 self.kub_client.run_next((key, command))
 
     def terminate(self):
@@ -202,6 +212,7 @@ class KubernetesExecutor(BaseExecutor):
     def change_state(self, key, state):
         self.logger.info("k8s: setting state of {} to {}".format(key, state))
         if state != State.RUNNING:
+            self.kub_client.delete_job(key)
             self.running.pop(key)
         self.event_buffer[key] = state
         (dag_id, task_id, ex_time) = key
@@ -210,9 +221,10 @@ class KubernetesExecutor(BaseExecutor):
             task_id=task_id,
             execution_date=ex_time).one()
 
-        item.state = state
-        self._session.add(item)
-        self._session.commit()
+        if item.state == State.RUNNING or item.state == State.QUEUED:
+            item.state = state
+            self._session.add(item)
+            self._session.commit()
 
     def end(self):
         logging.info('ending kube executor')

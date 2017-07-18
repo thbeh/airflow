@@ -48,6 +48,8 @@ class BaseExecutor(LoggingMixin):
         if key not in self.queued_tasks and key not in self.running:
             self.log.info("Adding to queue: %s", command)
             self.queued_tasks[key] = (command, priority, queue, task_instance)
+        else:
+            self.logger.info("could not queue task {}".format(key))
 
     def queue_task_instance(
             self,
@@ -92,8 +94,7 @@ class BaseExecutor(LoggingMixin):
         """
         pass
 
-    def heartbeat(self):
-
+    def heartbeat(self, km=False):
         # Triggering new jobs
         if not self.parallelism:
             open_slots = len(self.queued_tasks)
@@ -119,7 +120,7 @@ class BaseExecutor(LoggingMixin):
             # does NOT eliminate it.
             self.queued_tasks.pop(key)
             ti.refresh_from_db()
-            if ti.state != State.RUNNING:
+            if ti.state != State.RUNNING or km:
                 self.running[key] = command
                 self.execute_async(key, command=command, queue=queue)
             else:

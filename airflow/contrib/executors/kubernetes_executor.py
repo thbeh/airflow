@@ -16,6 +16,7 @@ import calendar
 import logging
 import time
 
+import multiprocessing
 from airflow.contrib.kubernetes.kubernetes_job_builder import KubernetesJobBuilder
 from airflow.contrib.kubernetes.kubernetes_helper import KubernetesHelper
 from queue import Queue

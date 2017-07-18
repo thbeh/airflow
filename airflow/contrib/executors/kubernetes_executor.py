@@ -48,6 +48,7 @@ def _prep_command_for_container(command):
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
     def __init__(self,namespace, np, result_queue, watcher_queue):
+        self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
         self.result_queue = result_queue
         self._watch_function = namespace
@@ -56,21 +57,21 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         self.watcher_queue = watcher_queue
 
     def run(self):
-        logging.info("starting watch!")
-        logging.info("running {} with {}".format(str(self._watch_function), self.namespace))
+        self.logger.info("starting watch!")
+        self.logger.info("running {} with {}".format(str(self._watch_function), self.namespace))
         for event in self._watch.stream(self._watch_function, self.namespace):
             job = event['object']
             self.process_status(job.metadata.name, job.status)
 
     def process_status(self, job_id, status):
         if status.failed:
-            logging.info("Event: {} Failed".format(job_id))
+            self.logger.info("Event: {} Failed".format(job_id))
             self.watcher_queue.put((job_id, State.FAILED))
         elif status.succeeded:
-            logging.info("Event: {} Succeeded".format(job_id))
+            self.logger.info("Event: {} Succeeded".format(job_id))
             self.watcher_queue.put((job_id, None))
         elif status.active:
-            logging.info("Event: {} is Running".format(job_id))
+            self.logger.info("Event: {} is Running".format(job_id))
 
 
 class AirflowKubernetesScheduler(object):
@@ -78,7 +79,8 @@ class AirflowKubernetesScheduler(object):
                  task_queue,
                  result_queue,
                  running):
-        logging.info("creating kubernetes executor")
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("creating kubernetes executor")
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.current_jobs = {}
@@ -101,9 +103,9 @@ class AirflowKubernetesScheduler(object):
         :return: 
 
         """
-        logging.info('k8s: job is {}'.format(str(next_job)))
+        self.logger.info('k8s: job is {}'.format(str(next_job)))
         (key, command) = next_job
-        logging.info("running for command {}".format(command))
+        self.logger.info("running for command {}".format(command))
         epoch_time = calendar.timegm(time.gmtime())
         command_list = ["/usr/local/airflow/entrypoint.sh"] + command.split()[1:] + \
                        ['-km']
@@ -118,7 +120,7 @@ class AirflowKubernetesScheduler(object):
         pod.launch()
         self._task_counter += 1
 
-        logging.info("k8s: Job created!")
+        self.logger.info("k8s: Job created!")
 
     def delete_job(self, key):
         job_id = self.current_jobs[key]
@@ -141,7 +143,7 @@ class AirflowKubernetesScheduler(object):
         job_id, state = self.watcher_queue.get()
         if job_id in self.current_jobs:
             key = self.current_jobs[job_id]
-            logging.info("finishing job {}".format(key))
+            self.logger.info("finishing job {}".format(key))
             namespace = 'default'
             if state:
                 self.result_queue.put((key, state))
@@ -183,7 +185,7 @@ class AirflowKubernetesScheduler(object):
 class KubernetesExecutor(BaseExecutor):
 
     def start(self):
-        logging.info('k8s: starting kubernetes executor')
+        self.logger.info('k8s: starting kubernetes executor')
         self.task_queue = Queue()
         self._session = settings.Session()
         self.result_queue = Queue()
@@ -195,14 +197,14 @@ class KubernetesExecutor(BaseExecutor):
         self.kub_client.sync()
         while not self.result_queue.empty():
             results = self.result_queue.get()
-            logging.info("reporting {}".format(results))
+            self.logger.info("reporting {}".format(results))
             self.change_state(*results)
 
         # TODO this could be a job_counter based on max jobs a user wants
         if len(self.kub_client.current_jobs) > 3:
-            logging.info("currently a job is running")
+            self.logger.info("currently a job is running")
         else:
-            logging.info("queue ready, running next")
+            self.logger.info("queue ready, running next")
             if not self.task_queue.empty():
                 (key, command) = self.task_queue.get()
                 self.kub_client.run_next((key, command))
@@ -228,9 +230,9 @@ class KubernetesExecutor(BaseExecutor):
             self._session.commit()
 
     def end(self):
-        logging.info('ending kube executor')
+        self.logger.info('ending kube executor')
         self.task_queue.join()
 
     def execute_async(self, key, command, queue=None):
-        logging.info("k8s: adding task {} with command {}".format(key, command))
+        self.logger.info("k8s: adding task {} with command {}".format(key, command))
         self.task_queue.put((key, command))

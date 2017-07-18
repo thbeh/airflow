@@ -16,7 +16,7 @@ from builtins import range
 from airflow import configuration
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.state import State
-
+from airflow.utils.logging import LoggingMixin
 PARALLELISM = configuration.getint('core', 'PARALLELISM')
 
 
@@ -49,7 +49,7 @@ class BaseExecutor(LoggingMixin):
             self.log.info("Adding to queue: %s", command)
             self.queued_tasks[key] = (command, priority, queue, task_instance)
         else:
-            self.log.info("could not queue task {}".format(key))
+            self.logger.info("could not queue task {}".format(key))
 
     def queue_task_instance(
             self,
@@ -94,7 +94,7 @@ class BaseExecutor(LoggingMixin):
         """
         pass
 
-    def heartbeat(self):
+    def heartbeat(self, km=False):
         # Triggering new jobs
         if not self.parallelism:
             open_slots = len(self.queued_tasks)
@@ -120,14 +120,13 @@ class BaseExecutor(LoggingMixin):
             # does NOT eliminate it.
             self.queued_tasks.pop(key)
             ti.refresh_from_db()
-            if ti.state != State.RUNNING:
+            if ti.state != State.RUNNING or km:
                 self.running[key] = command
                 self.execute_async(key, command=command, queue=queue, executor_config=ti.executor_config)
             else:
-                self.log.debug(
-                    'Task is already running, not sending to executor: %s',
-                    key
-                )
+                self.logger.info(
+                    'Task is already running, not sending to '
+                    'executor: {}'.format(key))
 
         # Calling child class sync method
         self.log.debug("Calling the %s sync method", self.__class__)

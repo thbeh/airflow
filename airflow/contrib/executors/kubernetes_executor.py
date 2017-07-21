@@ -31,6 +31,7 @@ import json
 
 
 
+
 def _prep_command_for_container(command):
     """  
     When creating a kubernetes pod, the yaml expects the command
@@ -47,20 +48,23 @@ def _prep_command_for_container(command):
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
-    def __init__(self,namespace, np, result_queue, watcher_queue):
+    def __init__(self, watch_function, namespace, result_queue, watcher_queue):
         self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
         self.result_queue = result_queue
-        self._watch_function = namespace
+        self._watch_function = watch_function
         self._watch = watch.Watch()
-        self.namespace = np
+        self.namespace = namespace
         self.watcher_queue = watcher_queue
 
     def run(self):
         self.logger.info("starting watch!")
-        self.logger.info("running {} with {}".format(str(self._watch_function), self.namespace))
+        self.logger.info("running {} with {}".format(str(self._watch_function),
+                                                     self.namespace))
         for event in self._watch.stream(self._watch_function, self.namespace):
             job = event['object']
+            self.logger.info("Event: {} had an event of type {}".format(job.metadata.name,
+                                                                        event['type']))
             self.process_status(job.metadata.name, job.status)
 
     def process_status(self, job_id, status):
@@ -82,13 +86,14 @@ class AirflowKubernetesScheduler(object):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
         self.task_queue = task_queue
+        self.namespace = "default"
         self.result_queue = result_queue
         self.current_jobs = {}
         self.running = running
         self._task_counter = 0
         self.watcher_queue = multiprocessing.Queue()
         self.helper = KubernetesHelper()
-        w = KubernetesJobWatcher(self.helper.api.list_namespaced_job, "default",
+        w = KubernetesJobWatcher(self.helper.api.list_namespaced_job, self.namespace,
                                  self.result_queue, self.watcher_queue)
         w.start()
 
@@ -124,7 +129,7 @@ class AirflowKubernetesScheduler(object):
 
     def delete_job(self, key):
         job_id = self.current_jobs[key]
-        self.helper.delete_job(job_id, namespace="default")
+        self.helper.delete_job(job_id, namespace=self.namespace)
 
     def sync(self):
         """

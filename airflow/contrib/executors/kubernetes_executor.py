@@ -86,7 +86,7 @@ class AirflowKubernetesScheduler(object):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
         self.task_queue = task_queue
-        self.namespace = os.environ['MY_POD_NAMESPACE']
+        self.namespace = os.environ['k8s_POD_NAMESPACE']
         self.result_queue = result_queue
         self.current_jobs = {}
         self.running = running

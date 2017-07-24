@@ -15,7 +15,7 @@
 import calendar
 import logging
 import time
-
+import os
 import multiprocessing
 from airflow.contrib.kubernetes.kubernetes_job_builder import KubernetesJobBuilder
 from airflow.contrib.kubernetes.kubernetes_helper import KubernetesHelper
@@ -58,7 +58,7 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         self.watcher_queue = watcher_queue
 
     def run(self):
-        self.logger.info("starting watch!")
+        self.logger.info("and now my watch begins")
         self.logger.info("running {} with {}".format(str(self._watch_function),
                                                      self.namespace))
         for event in self._watch.stream(self._watch_function, self.namespace):
@@ -86,7 +86,7 @@ class AirflowKubernetesScheduler(object):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
         self.task_queue = task_queue
-        self.namespace = "default"
+        self.namespace = os.environ['MY_POD_NAMESPACE']
         self.result_queue = result_queue
         self.current_jobs = {}
         self.running = running

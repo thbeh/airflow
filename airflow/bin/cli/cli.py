@@ -13,34 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-import logging
-
-import reprlib
-
-import os
 import socket
+import argparse
+import json
+import logging
+import os
+import signal
 import subprocess
+import sys
 import textwrap
+import threading
+import time
+import traceback
+import warnings
 from importlib import import_module
 
-import argparse
-from builtins import input
-from collections import namedtuple
-from airflow.utils.timezone import parse as parsedate
-import json
-from tabulate import tabulate
-
 import daemon
-from daemon.pidfile import TimeoutPIDLockFile
-import signal
-import sys
-import threading
-import traceback
-import time
 import psutil
-import re
-from urllib.parse import urlunparse
+import reprlib
+from builtins import input
+from daemon.pidfile import TimeoutPIDLockFile
+from sqlalchemy import func
+from sqlalchemy.orm import exc
+from tabulate import tabulate
 
 import airflow
 from airflow import api
@@ -50,16 +45,12 @@ from airflow.exceptions import AirflowException
 from airflow.executors import GetDefaultExecutor
 from airflow.models import (DagModel, DagBag, TaskInstance,
                             DagPickle, DagRun, Variable, DagStat,
-                            Connection, DAG)
-
+                            Pool, Connection)
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import db as db_utils
 from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
                                              redirect_stdout, set_context)
 from airflow.www.app import cached_app
-
-from sqlalchemy import func
-from sqlalchemy.orm import exc
 
 api.load_auth()
 api_module = import_module(conf.get('cli', 'api_client'))
@@ -224,30 +215,40 @@ def delete_dag(args):
 
 
 def pool(args):
-    log = LoggingMixin().log
-
-    def _tabulate(pools):
-        return "\n%s" % tabulate(pools, ['Pool', 'Slots', 'Description'],
-                                 tablefmt="fancy_grid")
-
-    try:
-        if args.get is not None:
-            pools = [api_client.get_pool(name=args.get)]
-        elif args.set:
-            pools = [api_client.create_pool(name=args.set[0],
-                                            slots=args.set[1],
-                                            description=args.set[2])]
-        elif args.delete:
-            pools = [api_client.delete_pool(name=args.delete)]
-        else:
-            pools = api_client.get_pools()
-    except (AirflowException, IOError) as err:
-        log.error(err)
-    else:
-        log.info(_tabulate(pools=pools))
+    session = settings.Session()
+    if args.get or (args.set and args.set[0]) or args.delete:
+        name = args.get or args.delete or args.set[0]
+    pool = (
+        session.query(Pool)
+        .filter(Pool.pool == name)
+        .first())
+    if pool and args.get:
+        print("{} ".format(pool))
+        return
+    elif not pool and (args.get or args.delete):
+        print("No pool named {} found".format(name))
+    elif not pool and args.set:
+        pool = Pool(
+            pool=name,
+            slots=args.set[1],
+            description=args.set[2])
+        session.add(pool)
+        session.commit()
+        print("{} ".format(pool))
+    elif pool and args.set:
+        pool.slots = args.set[1]
+        pool.description = args.set[2]
+        session.commit()
+        print("{} ".format(pool))
+        return
+    elif pool and args.delete:
+        session.query(Pool).filter_by(pool=args.delete).delete()
+        session.commit()
+        print("Pool {} deleted".format(name))
 
 
 def variables(args):
+
     if args.get:
         try:
             var = Variable.get(args.get,
@@ -420,6 +421,52 @@ def run(args, dag=None):
         settings.configure_vars()
         settings.configure_orm()
 
+    logging.root.handlers = []
+    if args.raw:
+        # Output to STDOUT for the parent process to read and log
+        logging.basicConfig(
+            stream=sys.stdout,
+            level=settings.LOGGING_LEVEL,
+            format=settings.LOG_FORMAT)
+    else:
+        # Setting up logging to a file.
+
+        # To handle log writing when tasks are impersonated, the log files need to
+        # be writable by the user that runs the Airflow command and the user
+        # that is impersonated. This is mainly to handle corner cases with the
+        # SubDagOperator. When the SubDagOperator is run, all of the operators
+        # run under the impersonated user and create appropriate log files
+        # as the impersonated user. However, if the user manually runs tasks
+        # of the SubDagOperator through the UI, then the log files are created
+        # by the user that runs the Airflow command. For example, the Airflow
+        # run command may be run by the `airflow_sudoable` user, but the Airflow
+        # tasks may be run by the `airflow` user. If the log files are not
+        # writable by both users, then it's possible that re-running a task
+        # via the UI (or vice versa) results in a permission error as the task
+        # tries to write to a log file created by the other user.
+        log_base = os.path.expanduser(conf.get('core', 'BASE_LOG_FOLDER'))
+        directory = log_base + "/{args.dag_id}/{args.task_id}".format(args=args)
+        # Create the log file and give it group writable permissions
+        # TODO(aoen): Make log dirs and logs globally readable for now since the SubDag
+        # operator is not compatible with impersonation (e.g. if a Celery executor is used
+        # for a SubDag operator and the SubDag operator has a different owner than the
+        # parent DAG)
+        if not os.path.exists(directory):
+            # Create the directory as globally writable using custom mkdirs
+            # as os.makedirs doesn't set mode properly.
+            mkdirs(directory, 0o775)
+        iso = args.execution_date.isoformat()
+        filename = "{directory}/{iso}".format(**locals())
+
+        if not os.path.exists(filename):
+            open(filename, "a").close()
+            os.chmod(filename, 0o666)
+
+        logging.basicConfig(
+            filename=filename,
+            level=settings.LOGGING_LEVEL,
+            format=settings.LOG_FORMAT)
+
     if not args.pickle and not dag:
         dag = get_dag(args)
     elif not dag:
@@ -435,7 +482,82 @@ def run(args, dag=None):
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
 
-    ti.init_run_context(raw=args.raw)
+    if not ti.hostname:
+        ti.update_hostname(hostname=socket.getfqdn())
+    if args.kubernetes_mode:
+        print("Congratulations! You're in kubernetes mode!")
+        executor = GetDefaultExecutor()
+        executor.start()
+        print("Sending to executor.")
+        executor.queue_task_instance(
+            ti,
+            mark_success=args.mark_success,
+            ignore_all_deps=args.ignore_all_dependencies,
+            ignore_depends_on_past=args.ignore_depends_on_past,
+            ignore_task_deps=args.ignore_dependencies,
+            ignore_ti_state=args.force,
+            pool=args.pool)
+        executor.heartbeat(km=True)
+        executor.end()
+
+    elif args.local:
+        print("Logging into: " + filename)
+        run_job = jobs.LocalTaskJob(
+            task_instance=ti,
+            mark_success=args.mark_success,
+            pickle_id=args.pickle,
+            ignore_all_deps=args.ignore_all_dependencies,
+            ignore_depends_on_past=args.ignore_depends_on_past,
+            ignore_task_deps=args.ignore_dependencies,
+            ignore_ti_state=args.force,
+            pool=args.pool)
+        run_job.run()
+    elif args.raw:
+        ti.run(
+            mark_success=args.mark_success,
+            ignore_all_deps=args.ignore_all_dependencies,
+            ignore_depends_on_past=args.ignore_depends_on_past,
+            ignore_task_deps=args.ignore_dependencies,
+            ignore_ti_state=args.force,
+            job_id=args.job_id,
+            pool=args.pool,
+        )
+    elif args.pickle:
+        pickle_id = None
+        if args.ship_dag:
+            try:
+                # Running remotely, so pickling the DAG
+                session = settings.Session()
+                pickle = DagPickle(dag)
+                session.add(pickle)
+                session.commit()
+                pickle_id = pickle.id
+                print((
+                    'Pickled dag {dag} '
+                    'as pickle_id:{pickle_id}').format(**locals()))
+            except Exception as e:
+                print('Could not pickle the DAG')
+                print(e)
+                raise e
+
+        executor = GetDefaultExecutor()
+        executor.start()
+        print("Sending to executor.")
+        executor.queue_task_instance(
+            ti,
+            mark_success=args.mark_success,
+            pickle_id=pickle_id,
+            ignore_all_deps=args.ignore_all_dependencies,
+            ignore_depends_on_past=args.ignore_depends_on_past,
+            ignore_task_deps=args.ignore_dependencies,
+            ignore_ti_state=args.force,
+            pool=args.pool)
+        executor.heartbeat()
+        executor.end()
+
+    # Child processes should not flush or upload to remote
+    if args.raw:
+        return
 
     hostname = socket.getfqdn()
     log.info("Running %s on host %s", ti, hostname)
@@ -698,7 +820,7 @@ def webserver(args):
     error_logfile = args.error_logfile or conf.get('webserver', 'error_logfile')
     num_workers = args.workers or conf.get('webserver', 'workers')
     worker_timeout = (args.worker_timeout or
-                      conf.get('webserver', 'web_server_worker_timeout'))
+                      conf.get('webserver', 'webserver_worker_timeout'))
     ssl_cert = args.ssl_cert or conf.get('webserver', 'web_server_ssl_cert')
     ssl_key = args.ssl_key or conf.get('webserver', 'web_server_ssl_key')
     if not ssl_cert and ssl_key:
@@ -869,7 +991,7 @@ def worker(args):
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
     # Celery worker
-    from airflow.executors.celery_executor import app as celery_app
+    from airflow.bin.airflow.executors.celery_executor import app as celery_app
     from celery.bin import worker
 
     worker = worker.worker(app=celery_app)
@@ -944,11 +1066,7 @@ def upgradedb(args):  # noqa
 
 
 def version(args):  # noqa
-    print(settings.HEADER + "  v" + airflow.__version__)
-
-
-alternative_conn_specs = ['conn_type', 'conn_host',
-                          'conn_login', 'conn_password', 'conn_schema', 'conn_port']
+    print(settings.HEADER + "  v" + airflow.bin.airflow.__version__)
 
 
 def connections(args):
@@ -1114,7 +1232,7 @@ def flower(args):
 
 def kerberos(args):  # noqa
     print(settings.HEADER)
-    import airflow.security.kerberos
+    import airflow.bin.airflow.security.kerberos
 
     if args.daemon:
         pid, stdout, stderr, log_file = setup_locations("kerberos", args.pid, args.stdout, args.stderr, args.log_file)
@@ -1128,7 +1246,7 @@ def kerberos(args):  # noqa
         )
 
         with ctx:
-            airflow.security.kerberos.run()
+            airflow.bin.airflow.security.kerberos.run()
 
         stdout.close()
         stderr.close()
@@ -1669,3 +1787,4 @@ class CLIFactory(object):
 
 def get_parser():
     return CLIFactory.get_parser()
+

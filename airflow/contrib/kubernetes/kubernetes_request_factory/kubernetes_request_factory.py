@@ -87,6 +87,7 @@ class KubernetesRequestFactoryHelper(object):
 
     @staticmethod
     def extract_labels(pod, req):
+        req['metadata']['labels'] = req['metadata'].get('labels') or {}
         for k in pod.labels.keys():
             req['metadata']['labels'][k] = pod.labels[k]
 
@@ -114,7 +115,12 @@ class KubernetesRequestFactoryHelper(object):
         logging.info("preparing to import dags")
         dag_importer.import_dags()
         logging.info("using file mount {}".format(dag_importer.dag_import_spec))
-        req['spec']['volumes'] = [dag_importer.dag_import_spec]
+        container = req['spec']['containers'][0]
+        container['volumeMounts'] = container.get('volumeMounts') or {}
+        container['volumeMounts'].append({'name': 'shared-data',
+                                         'mountPath': '/usr/local/airflow/dags'})
+        req['spec']['volumes'] = req['spec'].get('volumes') or  []
+        req['spec']['volumes'].append(dag_importer.dag_import_spec)
 
     @staticmethod
     def extract_name(pod, req):

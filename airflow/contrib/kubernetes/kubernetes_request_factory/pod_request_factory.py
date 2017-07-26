@@ -30,9 +30,6 @@ spec:
     - name: base
       image: airflow-slave:latest
       command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
-      volumeMounts:
-        - name: shared-data
-          mountPath: "/usr/local/airflow/dags"
   restartPolicy: Never
     """
 
@@ -87,4 +84,5 @@ class ReturnValuePodRequestFactory(SimplePodRequestFactory):
             raise AirflowException('Please do not include single quote '
                                    'in your command for pods that return result to airflow')
         cmd = ' '.join(["'" + c + "'" if " " in c else c for c in container['command']])
-        container['command'] = ['/bin/bash', '-c', "({}) ; ({})".format(cmd, pre_stop_hook)]
+        container['command'] = ['/bin/bash', '-c', "({}) ; ({})"
+            .format(cmd, pre_stop_hook)]

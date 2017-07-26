@@ -36,9 +36,6 @@ spec:
       - name: base
         image: airflow-slave:latest
         command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
-        volumeMounts:
-          - name: shared-data
-            mountPath: "/usr/local/airflow/dags"
       restartPolicy: Never
     """
 

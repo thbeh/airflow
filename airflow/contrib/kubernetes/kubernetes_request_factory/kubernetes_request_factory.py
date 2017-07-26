@@ -27,7 +27,9 @@ class KubernetesRequestFactory:
     """
     __metaclass__ = ABCMeta
 
-    @abstractmethod
+    def __init__(self):
+        pass
+
     def create(self, pod):
         """
         Creates the request for kubernetes API.

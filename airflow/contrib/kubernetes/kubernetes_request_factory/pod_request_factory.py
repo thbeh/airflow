@@ -21,7 +21,7 @@ from airflow.contrib.kubernetes.kubernetes_request_factory.kubernetes_request_fa
 
 
 
-class SimplePodRequestFactory(kreq.KubernetesRequestFactory):
+class SimplePodRequestFactory(KubernetesRequestFactory):
     """
     Request generator for a simple pod.
     """
@@ -38,7 +38,7 @@ spec:
     """
 
     def __init__(self):
-        pass
+        super(SimplePodRequestFactory, self).__init__()
 
     def __init__(self):
         pass

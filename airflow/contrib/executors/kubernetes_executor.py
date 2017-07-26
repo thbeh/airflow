@@ -34,10 +34,10 @@ import json
 
 
 def _prep_command_for_container(command):
-    """  
+    """
     When creating a kubernetes pod, the yaml expects the command
     in the form of ["cmd","arg","arg","arg"...]
-    This function splits the command string into tokens 
+    This function splits the command string into tokens
     and then matches it to the convention.
 
     :param command:
@@ -112,7 +112,7 @@ class AirflowKubernetesScheduler(object):
         and store relevent info in the current_jobs map so we can track the job's
         status
 
-        :return: 
+        :return:
 
         """
         self.logger.info('k8s: job is {}'.format(str(next_job)))
@@ -146,7 +146,7 @@ class AirflowKubernetesScheduler(object):
         """
 
         The sync function checks the status of all currently running kubernetes jobs.
-        If a job is completed, it's status is placed in the result queue to 
+        If a job is completed, it's status is placed in the result queue to
         be sent back to the scheduler.
 
         :return:
@@ -168,13 +168,13 @@ class AirflowKubernetesScheduler(object):
     def _create_job_id_from_key(self, key, epoch_time):
         """
 
-        Kubernetes pod names must unique and match specific conventions 
+        Kubernetes pod names must unique and match specific conventions
         (i.e. no spaces, period, etc.)
         This function creates a unique name using the epoch time and internal counter
 
-        :param key: 
+        :param key:
 
-        :param epoch_time: 
+        :param epoch_time:
 
         :return:
 

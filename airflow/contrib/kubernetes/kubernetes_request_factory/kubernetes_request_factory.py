@@ -118,8 +118,8 @@ class KubernetesRequestFactoryHelper(object):
         container = req['spec']['containers'][0]
         container['volumeMounts'] = container.get('volumeMounts') or {}
         container['volumeMounts'].append({'name': 'shared-data',
-                                         'mountPath': '/usr/local/airflow/dags'})
-        req['spec']['volumes'] = req['spec'].get('volumes') or  []
+                                          'mountPath': '/usr/local/airflow/dags'})
+        req['spec']['volumes'] = req['spec'].get('volumes') or []
         req['spec']['volumes'].append(dag_importer.dag_import_spec)
 
     @staticmethod

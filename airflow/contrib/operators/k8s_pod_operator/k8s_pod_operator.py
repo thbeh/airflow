@@ -54,7 +54,7 @@ class PodOperator(PythonOperator):
         self._kube_request_factory = kube_request_factory or SimplePodRequestFactory
 
     def execute(self, context):
-        pod = self.pod_factory(context)
+        pod = self.get_pod_object(context)
 
         # Customize the pod
         pod.name = self.task_id
@@ -71,9 +71,7 @@ class PodOperator(PythonOperator):
         context['ti'].xcom_push(key='result', value=result)
 
         custom_return_value = self.on_pod_success(context)
-        if custom_return_value:
-            result = custom_return_value
-            context['ti'].xcom_push(key='custom_result', value=custom_return_value)
+        self.set_custom_return_value(context, custom_return_value)
         return result
 
     def on_pod_success(self, context):
@@ -83,6 +81,18 @@ class PodOperator(PythonOperator):
                      be stored in xcom
         """
         pass
+
+    def get_pod_object(self, context):
+        """
+            Returns a pod object. Overwrite this method to define custom objects
+        :param context: The task context
+        :return: The pod object
+        """
+        return self.pod_factory(context)
+
+    def set_custom_return_value(self, context, custom_return_value):
+        if custom_return_value:
+            context['ti'].xcom_push(key='custom_result', value=custom_return_value)
 
 
 class ReturnValuePodOperator(PodOperator):

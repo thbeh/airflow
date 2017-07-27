@@ -97,10 +97,10 @@ class KubernetesLauncher:
         resp = k8s_beta.read_namespaced_pod_status(
             KubernetesRequestFactoryHelper.sanitize_name(self.pod.name), namespace=self.pod.namespace)
         logging.info('status : ' + str(resp.status))
-        logging.info('phase : i' + str(resp.status.phase))
+        logging.info('phase : ' + str(resp.status.phase))
         if resp.status.phase == 'Failed':
             raise Exception("Job " + self.pod.name + " failed!")
-        return resp.status.phase != 'Running'
+        return resp.status.phase != 'Running' and resp.status.phase != 'Pending'
 
     def _delete_existing_pod(self, k8client):
         logging.info('deleting pod ' + self.pod.name)

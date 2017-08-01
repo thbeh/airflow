@@ -13,31 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-import logging
-
-import reprlib
-
-import os
 import socket
+import argparse
+import json
+import logging
+import os
+import signal
 import subprocess
+import sys
 import textwrap
 from importlib import import_module
 
-import argparse
-from builtins import input
-from collections import namedtuple
-from dateutil.parser import parse as parsedate
-import json
-from tabulate import tabulate
-
 import daemon
-from daemon.pidfile import TimeoutPIDLockFile
-import signal
-import sys
-import threading
-import traceback
-import time
 import psutil
 import re
 from urllib.parse import urlunparse
@@ -228,6 +215,7 @@ def pool(args):
 
 
 def variables(args):
+
     if args.get:
         try:
             var = Variable.get(args.get,
@@ -673,7 +661,7 @@ def webserver(args):
     error_logfile = args.error_logfile or conf.get('webserver', 'error_logfile')
     num_workers = args.workers or conf.get('webserver', 'workers')
     worker_timeout = (args.worker_timeout or
-                      conf.get('webserver', 'web_server_worker_timeout'))
+                      conf.get('webserver', 'webserver_worker_timeout'))
     ssl_cert = args.ssl_cert or conf.get('webserver', 'web_server_ssl_cert')
     ssl_key = args.ssl_key or conf.get('webserver', 'web_server_ssl_key')
     if not ssl_cert and ssl_key:
@@ -844,7 +832,7 @@ def worker(args):
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
     # Celery worker
-    from airflow.executors.celery_executor import app as celery_app
+    from airflow.bin.airflow.executors.celery_executor import app as celery_app
     from celery.bin import worker
 
     worker = worker.worker(app=celery_app)
@@ -919,7 +907,7 @@ def upgradedb(args):  # noqa
 
 
 def version(args):  # noqa
-    print(settings.HEADER + "  v" + airflow.__version__)
+    print(settings.HEADER + "  v" + airflow.bin.airflow.__version__)
 
 
 alternative_conn_specs = ['conn_type', 'conn_host',
@@ -1083,7 +1071,7 @@ def flower(args):
 
 def kerberos(args):  # noqa
     print(settings.HEADER)
-    import airflow.security.kerberos
+    import airflow.bin.airflow.security.kerberos
 
     if args.daemon:
         pid, stdout, stderr, log_file = setup_locations("kerberos", args.pid, args.stdout, args.stderr, args.log_file)
@@ -1097,7 +1085,7 @@ def kerberos(args):  # noqa
         )
 
         with ctx:
-            airflow.security.kerberos.run()
+            airflow.bin.airflow.security.kerberos.run()
 
         stdout.close()
         stderr.close()

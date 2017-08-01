@@ -160,8 +160,7 @@ class AirflowKubernetesScheduler(object):
         if job_id in self.current_jobs:
             key = self.current_jobs[job_id]
             self.logger.info("finishing job {}".format(key))
-            if state:
-                self.result_queue.put((key, state))
+            self.result_queue.put((key, state))
             self.current_jobs.pop(job_id)
             self.running.pop(key)
 
@@ -191,7 +190,6 @@ class AirflowKubernetesScheduler(object):
         session = settings.Session()
         item = session.query(TaskInstance) \
             .filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
-
         host_id = item.hostname
         print("host is {}".format(host_id))
 

@@ -15,7 +15,6 @@
 import calendar
 import logging
 import time
-import os
 import multiprocessing
 from airflow.contrib.kubernetes.kubernetes_pod_builder import KubernetesPodBuilder
 from airflow.contrib.kubernetes.kubernetes_helper import KubernetesHelper
@@ -23,14 +22,14 @@ from queue import Queue
 from kubernetes import watch
 from airflow import settings
 from airflow.contrib.kubernetes.kubernetes_request_factory import SimplePodRequestFactory
+from airflow.contrib.kubernetes.pod_launcher import incluster_namespace
 from airflow.executors.base_executor import BaseExecutor
 from airflow.models import TaskInstance
 from airflow.utils.state import State
 from airflow import configuration
-import json
+
+
 # TODO this is just for proof of concept. remove before merging.
-
-
 
 
 def _prep_command_for_container(command):
@@ -62,9 +61,9 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         self.logger.info("Event: and now my watch begins")
         self.logger.info("Event: proof of image change")
         self.logger.info("Event: running {} with {}".format(str(self._watch_function),
-                                                     self.namespace))
+                                                            self.namespace))
         for event in self._watch.stream(self._watch_function, self.namespace):
-            task= event['object']
+            task = event['object']
             self.logger.info("Event: {} had an event of type {}".format(task.metadata.name,
                                                                         event['type']))
             self.process_status(task.metadata.name, task.status.phase)
@@ -92,7 +91,7 @@ class AirflowKubernetesScheduler(object):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
         self.task_queue = task_queue
-        self.namespace = os.environ['k8s_POD_NAMESPACE']
+        self.namespace = incluster_namespace()
         self.logger.info("k8s: using namespace {}".format(self.namespace))
         self.result_queue = result_queue
         self.current_jobs = {}
@@ -125,10 +124,10 @@ class AirflowKubernetesScheduler(object):
         pod_id = self._create_job_id_from_key(key=key, epoch_time=epoch_time)
         self.current_jobs[pod_id] = key
 
-        image = configuration.get('core','k8s_image')
+        image = configuration.get('core', 'k8s_image')
         print("k8s: launching image {}".format(image))
         pod = KubernetesPodBuilder(
-            image= image,
+            image=image,
             cmds=command_list,
             kub_req_factory=SimplePodRequestFactory(),
             namespace=self.namespace)
@@ -197,7 +196,6 @@ class AirflowKubernetesScheduler(object):
 
 
 class KubernetesExecutor(BaseExecutor):
-
     def start(self):
         self.logger.info('k8s: starting kubernetes executor')
         self.task_queue = Queue()

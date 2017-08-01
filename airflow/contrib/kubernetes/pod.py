@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-class Pod:
+class Pod(object):
     """
         Represents a kubernetes pod and manages execution of a single pod.
 

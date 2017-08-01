@@ -1037,10 +1037,6 @@ def version(args):  # noqa
     print(settings.HEADER + "  v" + airflow.bin.airflow.__version__)
 
 
-alternative_conn_specs = ['conn_type', 'conn_host',
-                          'conn_login', 'conn_password', 'conn_schema', 'conn_port']
-
-
 def connections(args):
     if args.list:
         # Check that no other flags were passed to the command

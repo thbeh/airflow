@@ -48,6 +48,8 @@ spec:
         kreq.extract_volume_secrets(pod, req)
         kreq.extract_injectable_configs(pod, req)
         kreq.extract_privileged(pod, req)
+        if pod.mount_dags:
+            kreq.attach_volume_mounts(req)
         return req
 
     def after_create(self, body, pod):

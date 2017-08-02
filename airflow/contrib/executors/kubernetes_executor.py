@@ -226,6 +226,7 @@ class KubernetesExecutor(BaseExecutor):
         self.logger.info("k8s: setting state of {} to {}".format(key, state))
         if state != State.RUNNING:
             self.kub_client.delete_job(key)
+            self.logger.info("current running {}".format(self.running))
             self.running.pop(key)
         self.event_buffer[key] = state
         (dag_id, task_id, ex_time) = key

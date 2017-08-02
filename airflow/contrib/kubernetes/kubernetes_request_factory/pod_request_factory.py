@@ -34,6 +34,7 @@ spec:
     - name: base
       image: airflow-slave:latest
       command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
+      imagePullPolicy: Always
   restartPolicy: Never
     """
 

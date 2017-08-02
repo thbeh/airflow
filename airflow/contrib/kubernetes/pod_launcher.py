@@ -43,7 +43,6 @@ def incluster_namespace():
        raise AirflowException('Incluster namespace mount was not found!')
     with open(mounted_ns, 'rt') as f:
         ns = f.read()
-        logging.info('Using incluster namespace', ns)
         return ns
 
 

@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
-from .kubernetes_request_factory import KubernetesRequestFactory
-from .kubernetes_request_factory import KubernetesRequestFactoryHelper as kreq
+import kubernetes_request_factory as kreq
 import yaml
+from airflow.contrib.kubernetes.pod import Pod
 from airflow import AirflowException
 
 
-class SimplePodRequestFactory(KubernetesRequestFactory):
+class SimplePodRequestFactory(kreq.KubernetesRequestFactory):
     """
         Request generator for a simple pod.
     """
@@ -30,14 +30,17 @@ spec:
     - name: base
       image: airflow-slave:latest
       command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
-      imagePullPolicy: Always
+      volumeMounts:
+        - name: shared-data
+          mountPath: "/usr/local/airflow/dags"
   restartPolicy: Never
     """
 
     def __init__(self):
-        super(SimplePodRequestFactory, self).__init__()
+        pass
 
-    def create_body(self, pod):
+    def create(self, pod):
+        # type: (Pod) -> dict
         req = yaml.load(self._yaml)
         kreq.extract_name(pod, req)
         kreq.extract_labels(pod, req)
@@ -47,14 +50,8 @@ spec:
             kreq.extract_node_selector(pod, req)
         kreq.extract_secrets(pod, req)
         kreq.extract_volume_secrets(pod, req)
-        kreq.extract_injectable_configs(pod, req)
-        kreq.extract_privileged(pod, req)
-        if pod.mount_dags:
-            kreq.attach_volume_mounts(req)
+        kreq.attach_volume_mounts(req)
         return req
-
-    def after_create(self, body, pod):
-        pass
 
 
 class ReturnValuePodRequestFactory(SimplePodRequestFactory):
@@ -85,7 +82,7 @@ class ReturnValuePodRequestFactory(SimplePodRequestFactory):
         # simulate the hook by wrapping the exe command inside a script
         if "'" in ' '.join(container['command']):
             raise AirflowException('Please do not include single quote '
-                                   'in your command for pods that return result to airflow')
+                                   'in your command for hyperparameterized pods')
         cmd = ' '.join(["'" + c + "'" if " " in c else c for c in container['command']])
         container['command'] = ['/bin/bash', '-c', "({}) ; ({})"
             .format(cmd, pre_stop_hook)]

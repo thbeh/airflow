@@ -12,13 +12,12 @@
 # See the License for the specific language governing permissions and
 
 from kubernetes import client, config
+from airflow.contrib.kubernetes.kubernetes_request_factory import KubernetesRequestFactory
 import json
 import logging
 
-from airflow.contrib.kubernetes.pod import Pod
 
-
-class KubernetesPodBuilder(Pod):
+class KubernetesPodBuilder:
     def __init__(
         self,
         image,
@@ -26,7 +25,8 @@ class KubernetesPodBuilder(Pod):
         namespace,
         kub_req_factory=None
     ):
-        super(KubernetesPodBuilder, self).__init__(image, mount_dags=True)
+        # type: (str, list, str, KubernetesRequestFactory) -> KubernetesPodBuilder
+
         self.image = image
         self.cmds = cmds
         self.kub_req_factory = kub_req_factory
@@ -40,6 +40,9 @@ class KubernetesPodBuilder(Pod):
 
     def add_env_variables(self, env):
         self.envs = env
+
+    def add_secret(self, secret):
+        self.secrets = self.secrets + [secret]
 
     def add_secrets(self, secrets):
         self.secrets = secrets

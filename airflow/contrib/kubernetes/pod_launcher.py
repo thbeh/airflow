@@ -101,6 +101,15 @@ class PodLauncher(LoggingMixin):
         state = self._task_status(self.read_pod(pod))
         return state != State.SUCCESS and state != State.FAILED
 
+    def _task_status(self, event):
+        # type: (V1Pod) -> State
+        task = event['object']
+        self.logger.info(
+            "Event: {} had an event of type {}".format(task.metadata.name,
+                                                       event['type']))
+        status = self.process_status(task.metadata.name, task.status.phase)
+        return status
+
     def read_pod(self, pod):
         try:
             return self._client.read_namespaced_pod(pod.name, pod.namespace)

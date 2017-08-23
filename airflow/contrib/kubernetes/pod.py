@@ -38,21 +38,21 @@ class Pod:
             envs,
             cmds,
             secrets,
-            labels,
-            node_selectors,
-            name,
+            labels=None,
+            node_selectors=None,
+            name=None,
             volumes = [],
             namespace='default',
             result=None):
         self.image = image
-        self.envs = envs
+        self.envs = envs if envs else {}
         self.cmds = cmds
         self.secrets = secrets
         self.result = result
-        self.labels = labels
+        self.labels = labels if labels else []
         self.name = name
         self.volumes = volumes
-        self.node_selectors = node_selectors
+        self.node_selectors = node_selectors if node_selectors else []
         self.namespace = namespace
         self.logger = logging.getLogger(self.__class__.__name__)
 

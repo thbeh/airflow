@@ -27,17 +27,18 @@ class PodLauncher:
         self._watch = watch.Watch()
         self.logger = logging.getLogger(__name__)
 
+    def run_pod_async(self, pod):
+        req = self.kube_req_factory.create(pod)
+        print(json.dumps(req))
+        resp = self._client.create_namespaced_pod(body=req, namespace=pod.namespace)
+        return resp
+
     def run_pod(self, pod):
         # type: (Pod) -> State
         """
             Launches the pod synchronously and waits for completion.
         """
-
-        req = self.kube_req_factory.create(pod)
-        print(json.dumps(req))
-        resp = self._client.create_namespaced_pod(body=req, namespace=pod.namespace)
-        self.logger.info("Job created. status='%s', yaml:\n%s"
-                         % (str(resp.status), str(req)))
+        resp = self.run_pod_async(pod)
         final_status = self._monitor_pod(pod)
         return final_status
 

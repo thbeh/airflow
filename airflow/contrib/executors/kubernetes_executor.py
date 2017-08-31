@@ -32,8 +32,9 @@ from airflow import configuration
 # TODO this is just for proof of concept. remove before merging.
 
 class KubeConfig:
-    kube_image = configuration.get('core', 'k8s_image')
-    git_repo = configuration.get('core', 'k8s_git_repo')
+    def __init__(self):
+        self.kube_image = configuration.get('core', 'k8s_image')
+        self.git_repo = configuration.get('core', 'k8s_git_repo')
 
 
 def _prep_command_for_container(command):
@@ -94,6 +95,7 @@ class AirflowKubernetesScheduler(object):
                  running):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
+        self.kube_config = KubeConfig()
         self.task_queue = task_queue
         self.namespace = incluster_namespace()
         self.logger.info("k8s: using namespace {}".format(self.namespace))
@@ -126,17 +128,18 @@ class AirflowKubernetesScheduler(object):
                    "git clone {} /tmp/tmp_git && " \
                    "mv /tmp/tmp_git/* $AIRFLOW_HOME/dags/synched/git/ &&" \
                    "rm -rf /tmp/tmp_git &&" \
-                   "{} -km".format(KubeConfig.git_repo, command)
+                   "{} -km".format(self.kube_config.git_repo, command)
         pod_id = self._create_job_id_from_key(key=key, epoch_time=epoch_time)
         self.current_jobs[pod_id] = key
 
         pod = KubernetesPodBuilder(
-            image=KubeConfig.kube_image,
+            image=self.kube_config.kube_image,
             cmds=["bash", "-cx", "--"],
             args=[cmd_args],
             kub_req_factory=SimplePodRequestFactory(),
             namespace=self.namespace
         )
+        pod.add_env_variables({"AIRFLOW__CORE__EXECUTOR": "LocalExecutor"})
         pod.add_name(pod_id)
         pod.launch()
         self._task_counter += 1

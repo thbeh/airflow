@@ -13,12 +13,7 @@ spec:
           {
               "name": "init",
               "image": "{{docker_image}}",
-              "command": ["bash", "-c", "cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"],
-              "env": [
-                {"name": "AIRFLOW__CORE__SQL_ALCHEMY_CONN", "value": "postgresql+psycopg2://root:root@postgres-airflow:5432/airflow"},
-                {"name": "AIRFLOW__CORE__K8S_IMAGE", "value": "{{docker_image}}"},
-                {"name": "AIRFLOW__CORE__K8S_GIT_REPO", "value": "https://github.com/grantnicholas/testdags.git"}
-              ]
+              "command": ["bash", "-c", "cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"]
           }
       ]'
     spec:
@@ -28,13 +23,6 @@ spec:
         command: [
           "bash", "-c", "cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"
         ]
-        env:
-        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-          value: postgresql+psycopg2://root:root@postgres-airflow:5432/airflow
-        - name: AIRFLOW__CORE__K8S_IMAGE
-          value: {{docker_image}}
-        - name: AIRFLOW__CORE__K8S_GIT_REPO
-          value: https://github.com/grantnicholas/testdags.git
       containers:
       - name: web
         image: {{docker_image}}
@@ -43,8 +31,8 @@ spec:
           containerPort: 8080
         args: ["webserver"]
         env:
-        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-          value: postgresql+psycopg2://root:root@postgres-airflow:5432/airflow
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
         - name: AIRFLOW__CORE__K8S_IMAGE
           value: {{docker_image}}
         - name: AIRFLOW__CORE__K8S_GIT_REPO
@@ -70,8 +58,8 @@ spec:
         image: {{docker_image}}
         args: ["scheduler"]
         env:
-        - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
-          value: postgresql+psycopg2://root:root@postgres-airflow:5432/airflow
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
         - name: AIRFLOW__CORE__K8S_IMAGE
           value: {{docker_image}}
         - name: AIRFLOW__CORE__K8S_GIT_REPO

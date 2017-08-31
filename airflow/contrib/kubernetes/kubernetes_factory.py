@@ -23,11 +23,13 @@ class KubernetesPodBuilder(Pod):
         self,
         image,
         cmds,
+        args,
         namespace,
         kub_req_factory=None
     ):
         super(KubernetesPodBuilder, self).__init__(image, mount_dags=True)
         self.image = image
+        self.args = args
         self.cmds = cmds
         self.kub_req_factory = kub_req_factory
         self.namespace = namespace

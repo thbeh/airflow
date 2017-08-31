@@ -42,10 +42,11 @@ spec:
     def create(self, pod):
         # type: (Pod) -> dict
         req = yaml.load(self._yaml)
-        self.extract_name(pod, req)
-        self.extract_labels(pod, req)
-        self.extract_image(pod, req)
-        self.extract_cmds(pod, req)
+        kreq.extract_name(pod, req)
+        kreq.extract_labels(pod, req)
+        kreq.extract_image(pod, req)
+        kreq.extract_cmds(pod, req)
+        kreq.extract_args(pod, req)
         if len(pod.node_selectors) > 0:
             self.extract_node_selector(pod, req)
         self.extract_secrets(pod, req)

@@ -58,6 +58,10 @@ class KubernetesRequestFactory():
         req['spec']['containers'][0]['command'] = pod.cmds
 
     @staticmethod
+    def extract_args(pod, req):
+        req['spec']['containers'][0]['args'] = pod.args
+
+    @staticmethod
     def extract_node_selector(pod, req):
         req['spec']['nodeSelector'] = pod.node_selectors
 

@@ -20,12 +20,14 @@ class KubernetesResourceBuilder:
         self,
         image,
         cmds,
+        args,
         namespace,
         kub_req_factory=None
     ):
         # type: (str, list, str, KubernetesRequestFactory) -> KubernetesResourceBuilder
 
         self.image = image
+        self.args = args
         self.cmds = cmds
         self.kub_req_factory = kub_req_factory
         self.namespace = namespace

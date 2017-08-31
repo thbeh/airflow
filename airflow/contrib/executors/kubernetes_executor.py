@@ -31,6 +31,10 @@ from airflow import configuration
 
 # TODO this is just for proof of concept. remove before merging.
 
+class KubeConfig:
+    kube_image = configuration.get('core', 'k8s_image')
+    git_repo = configuration.get('core', 'k8s_git_repo')
+
 
 def _prep_command_for_container(command):
     """
@@ -118,19 +122,21 @@ class AirflowKubernetesScheduler(object):
         (key, command) = next_job
         self.logger.info("running for command {}".format(command))
         epoch_time = calendar.timegm(time.gmtime())
-        command_list = ["/usr/local/airflow/entrypoint.sh"] + command.split()[1:] + \
-                       ['-km']
-        self._set_host_id(key)
+        cmd_args = "mkdir -p $AIRFLOW_HOME/dags/synched/git && " \
+                   "git clone {} /tmp/tmp_git && " \
+                   "mv /tmp/tmp_git/* $AIRFLOW_HOME/dags/synched/git/ &&" \
+                   "rm -rf /tmp/tmp_git &&" \
+                   "{} -km".format(KubeConfig.git_repo, command)
         pod_id = self._create_job_id_from_key(key=key, epoch_time=epoch_time)
         self.current_jobs[pod_id] = key
 
-        image = configuration.get('core', 'k8s_image')
-        print("k8s: launching image {}".format(image))
         pod = KubernetesPodBuilder(
-            image=image,
-            cmds=command_list,
+            image=KubeConfig.kube_image,
+            cmds=["bash", "-cx", "--"],
+            args=[cmd_args],
             kub_req_factory=SimplePodRequestFactory(),
-            namespace=self.namespace)
+            namespace=self.namespace
+        )
         pod.add_name(pod_id)
         pod.launch()
         self._task_counter += 1
@@ -183,14 +189,6 @@ class AirflowKubernetesScheduler(object):
         unformatted_job_id = '-'.join(job_fields)
         job_id = unformatted_job_id.replace('_', '-')
         return job_id
-
-    def _set_host_id(self, key):
-        (dag_id, task_id, ex_time) = key
-        session = settings.Session()
-        item = session.query(TaskInstance) \
-            .filter_by(dag_id=dag_id, task_id=task_id, execution_date=ex_time).one()
-        host_id = item.hostname
-        print("host is {}".format(host_id))
 
 
 class KubernetesExecutor(BaseExecutor):

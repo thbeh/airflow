@@ -39,6 +39,7 @@ class KubernetesPodBuilder(Pod):
         self.secrets = {}
         self.node_selectors = []
         self.name = None
+        self.image_pull_policy = None
 
     def add_env_variables(self, env):
         self.envs = env

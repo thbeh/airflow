@@ -37,6 +37,8 @@ spec:
           value: {{docker_image}}
         - name: AIRFLOW__CORE__K8S_GIT_REPO
           value: https://github.com/grantnicholas/testdags.git
+        - name: AIRFLOW__CORE__K8S_GIT_BRANCH
+          value: master
         volumeMounts:
         - name: dags
           mountPath: /root/airflow/dags/synched
@@ -64,6 +66,10 @@ spec:
           value: {{docker_image}}
         - name: AIRFLOW__CORE__K8S_GIT_REPO
           value: https://github.com/grantnicholas/testdags.git
+        - name: AIRFLOW__CORE__K8S_GIT_BRANCH
+          value: master
+        - name: AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL
+          value: "30"
         volumeMounts:
         - name: dags
           mountPath: /root/airflow/dags/synched
@@ -72,6 +78,8 @@ spec:
         env:
         - name: GIT_SYNC_REPO
           value: https://github.com/grantnicholas/testdags.git
+        - name: GIT_SYNC_BRANCH
+          value: master
         - name: GIT_SYNC_DEST
           value: git
         volumeMounts:

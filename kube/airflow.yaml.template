@@ -69,7 +69,7 @@ spec:
         - name: AIRFLOW__CORE__K8S_GIT_BRANCH
           value: master
         - name: AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL
-          value: "30"
+          value: "60"
         volumeMounts:
         - name: dags
           mountPath: /root/airflow/dags/synched

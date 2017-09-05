@@ -68,6 +68,9 @@ class KubernetesRequestFactoryHelper(object):
     """
     Helper methods to build a request for kubernetes
     """
+    @staticmethod
+    def extract_image_pull_policy(pod, req):
+        req['spec']['containers'][0]['imagePullPolicy'] = pod.image_pull_policy
 
     @staticmethod
     def extract_image(pod, req):

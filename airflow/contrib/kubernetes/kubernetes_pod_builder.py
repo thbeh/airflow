@@ -39,6 +39,7 @@ class KubernetesPodBuilder(Pod):
         self.secrets = {}
         self.node_selectors = []
         self.name = None
+        self.image_pull_policy = None
 
     def add_env_variables(self, env):
         self.envs = env
@@ -55,13 +56,16 @@ class KubernetesPodBuilder(Pod):
     def set_namespace(self, namespace):
         self.namespace = namespace
 
+    def set_image_pull_policy(self, image_pull_policy):
+        self.image_pull_policy = image_pull_policy
+
     def launch(self):
         """
             Launches the pod synchronously and waits for completion.
         """
         k8s_beta = self._kube_client()
         req = self.kub_req_factory.create(self)
-        print(json.dumps(req))
+        self.logger.info(json.dumps(req))
         resp = k8s_beta.create_namespaced_pod(body=req, namespace=self.namespace)
         self.logger.info("Job created. status='%s', yaml:\n%s",
                          str(resp.status), str(req))

@@ -36,6 +36,7 @@ class KubeConfig:
     def __init__(self):
         self.kube_image = configuration.get('core', 'k8s_image')
         self.git_repo = configuration.get('core', 'k8s_git_repo')
+        self.git_branch = configuration.get('core', 'k8s_git_branch')
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
@@ -102,11 +103,10 @@ class AirflowKubernetesScheduler(object):
         key, command = next_job
         dag_id, task_id, execution_date = key
         self.logger.info("running for command {}".format(command))
-        cmd_args = "mkdir -p $AIRFLOW_HOME/dags/synched/git && " \
-                   "git clone {} /tmp/tmp_git && " \
-                   "mv /tmp/tmp_git/* $AIRFLOW_HOME/dags/synched/git/ &&" \
-                   "rm -rf /tmp/tmp_git &&" \
-                   "{} -km".format(self.kube_config.git_repo, command)
+        cmd_args = "mkdir -p $AIRFLOW_HOME/dags/synched/git && cd $AIRFLOW_HOME/dags/synched/git &&" \
+                   "git init && git remote add origin {git_repo} && git pull origin {git_branch} --depth=1 &&" \
+                   "{command} -km".format(git_repo=self.kube_config.git_repo, git_branch=self.kube_config.git_branch,
+                                          command=command)
         pod_id = self._create_job_id_from_key(key=key)
         pod = KubernetesPodBuilder(
             image=self.kube_config.kube_image,

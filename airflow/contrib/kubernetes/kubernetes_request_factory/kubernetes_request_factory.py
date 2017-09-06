@@ -14,6 +14,7 @@
 
 from abc import ABCMeta, abstractmethod
 
+
 class KubernetesRequestFactory():
     """
         Create requests to be sent to kube API. Extend this class
@@ -27,7 +28,6 @@ class KubernetesRequestFactory():
     def create(self, pod):
         """
             Creates the request for kubernetes API.
-
             :param pod: The pod object
         """
         pass
@@ -35,6 +35,11 @@ class KubernetesRequestFactory():
     @staticmethod
     def extract_image(pod, req):
         req['spec']['containers'][0]['image'] = pod.image
+
+    @staticmethod
+    def extract_image_pull_policy(pod, req):
+        if pod.image_pull_policy:
+            req['spec']['containers'][0]['imagePullPolicy'] = pod.image_pull_policy
 
     @staticmethod
     def add_secret_to_env(env, secret):
@@ -50,21 +55,32 @@ class KubernetesRequestFactory():
 
     @staticmethod
     def extract_labels(pod, req):
-        for k in pod.labels.keys():
-            req['metadata']['labels'][k] = pod.labels[k]
+        req['metadata']['labels'] = req['metadata'].get('labels', {})
+        for k, v in pod.labels.iteritems():
+            req['metadata']['labels'][k] = v
 
     @staticmethod
     def extract_cmds(pod, req):
         req['spec']['containers'][0]['command'] = pod.cmds
 
     @staticmethod
-    def extract_node_selector(pod, req):
-        req['spec']['nodeSelector'] = pod.node_selectors
+    def extract_args(pod, req):
+        req['spec']['containers'][0]['args'] = pod.args
 
+    @staticmethod
+    def extract_node_selector(pod, req):
+        if len(pod.node_selectors) > 0:
+            req['spec']['nodeSelector'] = pod.node_selectors
+
+    @staticmethod
+    def attach_volumes(pod, req):
+        req['spec']['volumes'] = pod.volumes
 
     @staticmethod
     def attach_volume_mounts(pod, req):
-        req['spec']['volumes'] = pod.volumes
+        if len(pod.volume_mounts) > 0:
+            req['spec']['containers'][0]['volumeMounts'] = req['spec']['containers'][0].get('volumeMounts', [])
+            req['spec']['containers'][0]['volumeMounts'].extend(pod.volume_mounts)
 
     @staticmethod
     def extract_name(pod, req):

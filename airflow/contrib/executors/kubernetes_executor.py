@@ -19,7 +19,9 @@ import os
 import multiprocessing
 from queue import Queue
 from datetime import datetime
-from kubernetes import watch
+from uuid import uuid4
+from kubernetes import watch, client
+from kubernetes.client.rest import ApiException
 from airflow import settings
 from airflow.contrib.kubernetes.pod_launcher import PodLauncher
 from airflow.executors.base_executor import BaseExecutor
@@ -140,20 +142,19 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                                                                         event['type']))
             self.process_status(task.metadata.name, task.status.phase, task.metadata.labels)
 
-    def process_status(self, job_id, status, labels):
+    def process_status(self, pod_id, status, labels):
         if status == 'Pending':
-            self.logger.info("Event: {} Pending".format(job_id))
+            self.logger.info("Event: {} Pending".format(pod_id))
         elif status == 'Failed':
-            self.logger.info("Event: {} Failed".format(job_id))
-            self.watcher_queue.put((job_id, State.FAILED, labels))
+            self.logger.info("Event: {} Failed".format(pod_id))
+            self.watcher_queue.put((pod_id, State.FAILED, labels))
         elif status == 'Succeeded':
-            self.logger.info("Event: {} Succeeded".format(job_id))
-            self.watcher_queue.put((job_id, None, labels))
+            self.logger.info("Event: {} Succeeded".format(pod_id))
+            self.watcher_queue.put((pod_id, None, labels))
         elif status == 'Running':
-            # self.logger.info("Event: {} is Running".format(job_id))
-            self.watcher_queue.put((job_id, State.RUNNING))
+            self.logger.info("Event: {} is Running".format(pod_id))
         else:
-            self.logger.info("Event: Invalid state: {} on job: {} with labels: {}".format(status, job_id, labels))
+            self.logger.info("Event: Invalid state: {} on pod: {} with labels: {}".format(status, pod_id, labels))
 
 
 class AirflowKubernetesScheduler(object):
@@ -186,20 +187,22 @@ class AirflowKubernetesScheduler(object):
         self.logger.info('k8s: job is {}'.format(str(next_job)))
         key, command = next_job
         dag_id, task_id, execution_date = key
-        self.logger.info("running for command {}".format(command))
-        pod_id = self._create_job_id_from_key(key=key)
+        self.logger.info("k8s: running for command {}".format(command))
         self.logger.info("k8s: launching image {}".format(self.kube_config.kube_image))
         pod = self.pod_maker.make_pod(
-            namespace=self.namespace, pod_id=pod_id, dag_id=dag_id, task_id=task_id,
+            namespace=self.namespace, pod_id=uuid4().hex, dag_id=dag_id, task_id=task_id,
             execution_date=self._datetime_to_label_safe_datestring(execution_date), airflow_command=command
         )
         # the watcher will monitor pods, so we do not block.
         self.launcher.run_pod_async(pod)
         self.logger.info("k8s: Job created!")
 
-    def delete_job(self, key):
-        job_id = self._create_job_id_from_key(key)
-        self.helper.delete_pod(job_id, namespace=self.namespace)
+    def delete_pod(self, pod_id):
+        try:
+            self.api.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
+        except ApiException as e:
+            if e.status != 404:
+                raise
 
     def sync(self):
         """
@@ -214,21 +217,13 @@ class AirflowKubernetesScheduler(object):
         while not self.watcher_queue.empty():
             self.process_watcher_task()
 
-    def end_task(self):
-        job_id, state, labels = self.watcher_queue.get()
+    def process_watcher_task(self):
+        pod_id, state, labels = self.watcher_queue.get()
         logging.info("Attempting to finish job; job_id: {}; state: {}; labels: {}".format(job_id, state, labels))
         key = self._labels_to_key(labels)
         if key:
             self.logger.info("finishing job {}".format(key))
-            self.result_queue.put((key, state))
-
-    @staticmethod
-    def _create_job_id_from_key(key):
-        keystr = '-'.join([str(x).replace(' ', '-') for x in key[:2]])
-        job_fields = [keystr]
-        unformatted_job_id = '-'.join(job_fields)
-        job_id = unformatted_job_id.replace('_', '-')
-        return job_id
+            self.result_queue.put((key, state, pod_id))
 
     @staticmethod
     def _label_safe_datestring_to_datetime(string):
@@ -279,25 +274,16 @@ class KubernetesExecutor(BaseExecutor):
         while not self.result_queue.empty():
             results = self.result_queue.get()
             self.logger.info("reporting {}".format(results))
-            self.change_state(*results)
+            self._change_state(*results)
 
         if not self.task_queue.empty():
             (key, command) = self.task_queue.get()
             self.kub_client.run_next((key, command))
 
-    def job_queue_full(self):
-        return len(self.kub_client.current_jobs) > PARALLELISM
-
-    def cluster_at_capacity(self):
-        return len(self.pending_tasks) > 5
-
-    def terminate(self):
-        pass
-
-    def change_state(self, key, state):
+    def _change_state(self, key, state, pod_id):
         self.logger.info("k8s: setting state of {} to {}".format(key, state))
         if state != State.RUNNING:
-            self.kub_client.delete_job(key)
+            self.kub_client.delete_pod(pod_id)
             try:
                 self.running.pop(key)
             except KeyError:

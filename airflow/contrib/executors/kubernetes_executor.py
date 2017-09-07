@@ -30,15 +30,96 @@ from airflow.contrib.kubernetes.pod import Pod
 
 
 class KubeConfig:
+    @staticmethod
+    def safe_get(section, option, default):
+        try:
+            return configuration.get(section, option)
+        except AirflowConfigException:
+            return default
+
     def __init__(self):
+        self.dags_folder = configuration.get('core', 'dags_folder')
         self.parallelism = configuration.getint('core', 'PARALLELISM')
         self.kube_image = configuration.get('core', 'k8s_image')
-        self.git_repo = configuration.get('core', 'k8s_git_repo')
-        self.git_branch = configuration.get('core', 'k8s_git_branch')
-        try:
-            self.kube_namespace = configuration.get('core', 'k8s_namespace')
-        except AirflowConfigException:
-            self.kube_namespace = "default"
+        self.kube_namespace = self.safe_get('core', 'k8s_namespace', 'default')
+
+        # These two props must be set together
+        self.git_repo = self.safe_get('core', 'k8s_git_repo', None)
+        self.git_branch = self.safe_get('core', 'k8s_git_branch', None)
+
+        # Or these two props
+        self.dags_volume_claim = self.safe_get('core', 'k8s_dags_volume_claim', None)
+        self.dags_volume_subpath = self.safe_get('core', 'k8s_dags_volume_subpath', None)
+
+        self._validate()
+
+    def _validate(self):
+        if self.dags_volume_claim and self.dags_volume_subpath:
+            # do volume things
+            pass
+        elif self.git_repo and self.git_branch:
+            # do git things
+            pass
+        else:
+            raise AirflowConfigException(
+                "Must set either: "
+                "`k8s_dags_volume_claim and k8s_dags_volume_subpath` or "
+                "`k8s_git_repo and k8s_git_branch`"
+            )
+
+
+class PodMaker:
+    def __init__(self, kube_config):
+        self.logger = logging.getLogger(__name__)
+        self.kube_config = kube_config
+
+    def _get_volumes_and_mounts(self):
+        volume_name = "airflow-dags"
+
+        if self.kube_config.dags_volume_claim:
+            volumes = [{
+                "name": volume_name, "persistentVolumeClaim": {"claimName": self.kube_config.dags_volume_claim}
+            }]
+            volume_mounts = [{
+                "name": volume_name, "mountPath": self.kube_config.dags_folder,
+                "readOnly": True, "subPath": self.kube_config.dags_volume_subpath
+            }]
+            return volumes, volume_mounts
+        else:
+            return [], []
+
+    def _get_args(self, volumes, volume_mounts, airflow_command):
+        if len(volumes) > 0 and len(volume_mounts) > 0:
+            self.logger.info("Using k8s_dags_volume_claim for airflow dags")
+            return [airflow_command]
+        else:
+            self.logger.info("Using git-syncher for airflow dags")
+            cmd_args = "mkdir -p {dags_folder} && cd {dags_folder} &&" \
+                       "git init && git remote add origin {git_repo} && git pull origin {git_branch} --depth=1 &&" \
+                       "{command}".format(dags_folder=self.kube_config.dags_folder, git_repo=self.kube_config.git_repo,
+                                          git_branch=self.kube_config.git_branch, command=airflow_command)
+            return [cmd_args]
+
+    def make_pod(self, namespace, pod_id, dag_id, task_id, execution_date, airflow_command):
+        volumes, volume_mounts = self._get_volumes_and_mounts()
+
+        pod = Pod(
+            namespace=namespace,
+            name=pod_id,
+            image=self.kube_config.kube_image,
+            cmds=["bash", "-cx", "--"],
+            args=self._get_args(volumes, volume_mounts, airflow_command),
+            labels={
+                "airflow-slave": "",
+                "dag_id": dag_id,
+                "task_id": task_id,
+                "execution_date": execution_date
+            },
+            envs={"AIRFLOW__CORE__EXECUTOR": "LocalExecutor"},
+            volumes=volumes,
+            volume_mounts=volume_mounts
+        )
+        return pod
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
@@ -85,6 +166,7 @@ class AirflowKubernetesScheduler(object):
         self.namespace = self.kube_config.kube_namespace
         self.logger.info("k8s: using namespace {}".format(self.namespace))
         self.launcher = PodLauncher()
+        self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
         self.api = client.CoreV1Api()
         watch_function = self.api.list_namespaced_pod
@@ -106,27 +188,12 @@ class AirflowKubernetesScheduler(object):
         key, command = next_job
         dag_id, task_id, execution_date = key
         self.logger.info("running for command {}".format(command))
-        cmd_args = "mkdir -p $AIRFLOW_HOME/dags/synched/git && cd $AIRFLOW_HOME/dags/synched/git &&" \
-                   "git init && git remote add origin {git_repo} && git pull origin {git_branch} --depth=1 &&" \
-                   "{command}".format(git_repo=self.kube_config.git_repo, git_branch=self.kube_config.git_branch,
-                                          command=command)
         pod_id = self._create_job_id_from_key(key=key)
-        print("k8s: launching image {}".format(self.kube_config.kube_image))
-        pod = Pod(
-            image=self.kube_config.kube_image,
-            name=pod_id,
-            labels={
-                "airflow-slave": "",
-                "dag_id": dag_id,
-                "task_id": task_id,
-                "execution_date": self._datetime_to_label_safe_datestring(execution_date)
-            },
-            cmds=["bash", "-cx", "--"],
-            args=[cmd_args],
-            namespace=self.namespace,
-            envs={"AIRFLOW__CORE__EXECUTOR": "LocalExecutor"}
+        self.logger.info("k8s: launching image {}".format(self.kube_config.kube_image))
+        pod = self.pod_maker.make_pod(
+            namespace=self.namespace, pod_id=pod_id, dag_id=dag_id, task_id=task_id,
+            execution_date=self._datetime_to_label_safe_datestring(execution_date), airflow_command=command
         )
-
         # the watcher will monitor pods, so we do not block.
         self.launcher.run_pod_async(pod)
         self.logger.info("k8s: Job created!")

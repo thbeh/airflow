@@ -2,6 +2,7 @@ from collections import namedtuple
 from cli import *
 from dateutil.parser import parse as parsedate
 from airflow import settings
+from airflow import conf
 
 
 Arg = namedtuple(

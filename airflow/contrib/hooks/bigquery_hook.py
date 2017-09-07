@@ -194,7 +194,10 @@ class BigQueryBaseCursor(object):
             write_disposition = 'WRITE_EMPTY',
             allow_large_results=False,
             udf_config = False,
-            use_legacy_sql=True):
+            use_legacy_sql=True,
+            maximum_billing_tier=None,
+            create_disposition='CREATE_IF_NEEDED',
+            query_params=None):
         """
         Executes a BigQuery SQL query. Optionally persists results in a BigQuery
         table. See here:
@@ -209,6 +212,9 @@ class BigQueryBaseCursor(object):
             BigQuery table to save the query results.
         :param write_disposition: What to do if the table already exists in
             BigQuery.
+        :type write_disposition: string
+        :param create_disposition: Specifies whether the job is allowed to create new tables.
+        :type create_disposition: string
         :param allow_large_results: Whether to allow large results.
         :type allow_large_results: boolean
         :param udf_config: The User Defined Function configuration for the query.
@@ -216,11 +222,14 @@ class BigQueryBaseCursor(object):
         :type udf_config: list
         :param use_legacy_sql: Whether to use legacy SQL (true) or standard SQL (false).
         :type use_legacy_sql: boolean
+        :param maximum_billing_tier: Positive integer that serves as a multiplier of the basic price.
+        :type maximum_billing_tier: integer
         """
         configuration = {
             'query': {
                 'query': bql,
-                'useLegacySql': use_legacy_sql
+                'useLegacySql': use_legacy_sql,
+                'maximumBillingTier': maximum_billing_tier
             }
         }
 
@@ -234,6 +243,7 @@ class BigQueryBaseCursor(object):
             configuration['query'].update({
                 'allowLargeResults': allow_large_results,
                 'writeDisposition': write_disposition,
+                'createDisposition': create_disposition,
                 'destinationTable': {
                     'projectId': destination_project,
                     'datasetId': destination_dataset,
@@ -245,6 +255,9 @@ class BigQueryBaseCursor(object):
             configuration['query'].update({
                 'userDefinedFunctionResources': udf_config
             })
+
+        if query_params:
+            configuration['query']['queryParameters'] = query_params
 
         return self.run_with_configuration(configuration)
 
@@ -375,7 +388,10 @@ class BigQueryBaseCursor(object):
                  write_disposition='WRITE_EMPTY',
                  field_delimiter=',',
                  max_bad_records=0,
-                 schema_update_options=()):
+                 quote_character=None,
+                 allow_quoted_newlines=False,
+                 schema_update_options=(),
+                 src_fmt_configs={}):
         """
         Executes a BigQuery load command to load data from Google Cloud Storage
         to BigQuery. See here:
@@ -409,9 +425,15 @@ class BigQueryBaseCursor(object):
         :param max_bad_records: The maximum number of bad records that BigQuery can
             ignore when running the job.
         :type max_bad_records: int
+        :param quote_character: The value that is used to quote data sections in a CSV file.
+        :type quote_character: string
+        :param allow_quoted_newlines: Whether to allow quoted newlines (true) or not (false).
+        :type allow_quoted_newlines: boolean
         :param schema_update_options: Allows the schema of the desitination
             table to be updated as a side effect of the load job.
         :type schema_update_options: list
+        :param src_fmt_configs: configure optional fields specific to the source format
+        :type src_fmt_configs: dict
         """
 
         # bigquery only allows certain source formats
@@ -420,7 +442,7 @@ class BigQueryBaseCursor(object):
         # Refer to this link for more details:
         #   https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs#configuration.query.tableDefinitions.(key).sourceFormat
         source_format = source_format.upper()
-        allowed_formats = ["CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "GOOGLE_SHEETS"]
+        allowed_formats = ["CSV", "NEWLINE_DELIMITED_JSON", "AVRO", "GOOGLE_SHEETS", "DATASTORE_BACKUP"]
         if source_format not in allowed_formats:
             raise ValueError("{0} is not a valid source format. "
                     "Please use one of the following types: {1}"
@@ -478,12 +500,32 @@ class BigQueryBaseCursor(object):
                 )
                 configuration['load']['schemaUpdateOptions'] = schema_update_options
 
-        if source_format == 'CSV':
-            configuration['load']['skipLeadingRows'] = skip_leading_rows
-            configuration['load']['fieldDelimiter'] = field_delimiter
-
         if max_bad_records:
             configuration['load']['maxBadRecords'] = max_bad_records
+
+        # if following fields are not specified in src_fmt_configs,
+        # honor the top-level params for backward-compatibility
+        if 'skipLeadingRows' not in src_fmt_configs:
+            src_fmt_configs['skipLeadingRows'] = skip_leading_rows
+        if 'fieldDelimiter' not in src_fmt_configs:
+            src_fmt_configs['fieldDelimiter'] = field_delimiter
+        if quote_character:
+            src_fmt_configs['quote'] = quote_character
+        if allow_quoted_newlines:
+            src_fmt_configs['allowQuotedNewlines'] = allow_quoted_newlines
+
+        src_fmt_to_configs_mapping = {
+            'CSV': ['allowJaggedRows', 'allowQuotedNewlines', 'autodetect',
+                    'fieldDelimiter', 'skipLeadingRows', 'ignoreUnknownValues',
+                    'nullMarker', 'quote'],
+            'DATASTORE_BACKUP': ['projectionFields'],
+            'NEWLINE_DELIMITED_JSON': ['autodetect', 'ignoreUnknownValues'],
+            'AVRO': [],
+        }
+        valid_configs = src_fmt_to_configs_mapping[source_format]
+        src_fmt_configs = {k: v for k, v in src_fmt_configs.items()
+                           if k in valid_configs}
+        configuration['load'].update(src_fmt_configs)
 
         return self.run_with_configuration(configuration)
 

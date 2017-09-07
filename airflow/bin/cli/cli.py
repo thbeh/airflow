@@ -14,20 +14,14 @@
 # limitations under the License.
 
 import socket
-import argparse
-import json
-import logging
-import os
-import signal
-import subprocess
-import sys
-import textwrap
 import threading
 import time
 import traceback
 import warnings
 from importlib import import_module
-
+import signal
+import textwrap
+import subprocess
 import daemon
 import psutil
 import reprlib
@@ -35,8 +29,13 @@ from builtins import input
 from daemon.pidfile import TimeoutPIDLockFile
 from sqlalchemy import func
 from sqlalchemy.orm import exc
+from cli_factory import CLIFactory
 from tabulate import tabulate
-
+import re
+import sys
+import os
+import logging
+import json
 import airflow
 from airflow import api
 from airflow import jobs, settings
@@ -45,12 +44,13 @@ from airflow.exceptions import AirflowException
 from airflow.executors import GetDefaultExecutor
 from airflow.models import (DagModel, DagBag, TaskInstance,
                             DagPickle, DagRun, Variable, DagStat,
-                            Pool, Connection)
+                            Pool, Connection, DAG)
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import db as db_utils
-from airflow.utils import logging as logging_utils
-from airflow.utils.file import mkdirs
 from airflow.www.app import cached_app
+
+from sqlalchemy import func
+from sqlalchemy.orm import exc
 
 api.load_auth()
 api_module = import_module(conf.get('cli', 'api_client'))
@@ -120,6 +120,19 @@ def get_dag(args):
     return dagbag.dags[args.dag_id]
 
 
+def get_dags(args):
+    if not args.dag_regex:
+        return [get_dag(args)]
+    dagbag = DagBag(process_subdir(args.subdir))
+    matched_dags = [dag for dag in dagbag.dags.values() if re.search(
+        args.dag_id, dag.dag_id)]
+    if not matched_dags:
+        raise AirflowException(
+            'dag_id could not be found with regex: {}. Either the dag did not exist '
+            'or it failed to parse.'.format(args.dag_id))
+    return matched_dags
+
+
 def backfill(args, dag=None):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
@@ -157,7 +170,8 @@ def backfill(args, dag=None):
                           conf.getboolean('core', 'donot_pickle')),
             ignore_first_depends_on_past=args.ignore_first_depends_on_past,
             ignore_task_deps=args.ignore_dependencies,
-            pool=args.pool)
+            pool=args.pool,
+            delay_on_limit_secs=args.delay_on_limit)
 
 
 def trigger_dag(args):
@@ -320,7 +334,7 @@ def run(args, dag=None):
     # Load custom airflow config
     if args.cfg_path:
         with open(args.cfg_path, 'r') as conf_file:
-           conf_dict = json.load(conf_file)
+            conf_dict = json.load(conf_file)
 
         if os.path.exists(args.cfg_path):
             os.remove(args.cfg_path)
@@ -381,14 +395,14 @@ def run(args, dag=None):
         dag = get_dag(args)
     elif not dag:
         session = settings.Session()
-        logging.info('Loading pickle id {args.pickle}'.format(**locals()))
+        logging.info('Loading pickle id {args.pickle}'.format(args=args))
         dag_pickle = session.query(
             DagPickle).filter(DagPickle.id == args.pickle).first()
         if not dag_pickle:
             raise AirflowException("Who hid the pickle!? [missing pickle]")
         dag = dag_pickle.pickle
-    task = dag.get_task(task_id=args.task_id)
 
+    task = dag.get_task(task_id=args.task_id)
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
 
@@ -412,6 +426,22 @@ def run(args, dag=None):
 
     elif args.local:
         print("Logging into: " + filename)
+    logger = logging.getLogger('airflow.task')
+    if args.raw:
+        logger = logging.getLogger('airflow.task.raw')
+
+    for handler in logger.handlers:
+        try:
+            handler.set_context(ti)
+        except AttributeError:
+            # Not all handlers need to have context passed in so we ignore
+            # the error when handlers do not have set_context defined.
+            pass
+
+    hostname = socket.getfqdn()
+    logging.info("Running on host {}".format(hostname))
+
+    if args.local:
         run_job = jobs.LocalTaskJob(
             task_instance=ti,
             mark_success=args.mark_success,
@@ -423,12 +453,8 @@ def run(args, dag=None):
             pool=args.pool)
         run_job.run()
     elif args.raw:
-        ti.run(
+        ti._run_raw_task(
             mark_success=args.mark_success,
-            ignore_all_deps=args.ignore_all_dependencies,
-            ignore_depends_on_past=args.ignore_depends_on_past,
-            ignore_task_deps=args.ignore_dependencies,
-            ignore_ti_state=args.force,
             job_id=args.job_id,
             pool=args.pool,
         )
@@ -443,8 +469,8 @@ def run(args, dag=None):
                 session.commit()
                 pickle_id = pickle.id
                 print((
-                    'Pickled dag {dag} '
-                    'as pickle_id:{pickle_id}').format(**locals()))
+                          'Pickled dag {dag} '
+                          'as pickle_id:{pickle_id}').format(**locals()))
             except Exception as e:
                 print('Could not pickle the DAG')
                 print(e)
@@ -469,42 +495,13 @@ def run(args, dag=None):
     if args.raw:
         return
 
-    # Force the log to flush, and set the handler to go back to normal so we
-    # don't continue logging to the task's log file. The flush is important
-    # because we subsequently read from the log to insert into S3 or Google
-    # cloud storage.
-    logging.root.handlers[0].flush()
-    logging.root.handlers = []
-
-    # store logs remotely
-    remote_base = conf.get('core', 'REMOTE_BASE_LOG_FOLDER')
-
-    # deprecated as of March 2016
-    if not remote_base and conf.get('core', 'S3_LOG_FOLDER'):
-        warnings.warn(
-            'The S3_LOG_FOLDER conf key has been replaced by '
-            'REMOTE_BASE_LOG_FOLDER. Your conf still works but please '
-            'update airflow.cfg to ensure future compatibility.',
-            DeprecationWarning)
-        remote_base = conf.get('core', 'S3_LOG_FOLDER')
-
-    if os.path.exists(filename):
-        # read log and remove old logs to get just the latest additions
-
-        with open(filename, 'r') as logfile:
-            log = logfile.read()
-
-        remote_log_location = filename.replace(log_base, remote_base)
-        # S3
-        if remote_base.startswith('s3:/'):
-            logging_utils.S3Log().write(log, remote_log_location)
-        # GCS
-        elif remote_base.startswith('gs:/'):
-            logging_utils.GCSLog().write(log, remote_log_location)
-        # Other
-        elif remote_base and remote_base != 'None':
-            logging.error(
-                'Unsupported remote log location: {}'.format(remote_base))
+    # Force the log to flush. The flush is important because we
+    # might subsequently read from the log to insert into S3 or
+    # Google cloud storage. Explicitly close the handler is
+    # needed in order to upload to remote storage services.
+    for handler in logger.handlers:
+        handler.flush()
+        handler.close()
 
 
 def task_failed_deps(args):
@@ -614,15 +611,17 @@ def clear(args):
     logging.basicConfig(
         level=settings.LOGGING_LEVEL,
         format=settings.SIMPLE_LOG_FORMAT)
-    dag = get_dag(args)
+    dags = get_dags(args)
 
     if args.task_regex:
-        dag = dag.sub_dag(
-            task_regex=args.task_regex,
-            include_downstream=args.downstream,
-            include_upstream=args.upstream,
-        )
-    dag.clear(
+        for idx, dag in enumerate(dags):
+            dags[idx] = dag.sub_dag(
+                task_regex=args.task_regex,
+                include_downstream=args.downstream,
+                include_upstream=args.upstream)
+
+    DAG.clear_dags(
+        dags,
         start_date=args.start_date,
         end_date=args.end_date,
         only_failed=args.only_failed,
@@ -688,10 +687,10 @@ def restart_workers(gunicorn_master_proc, num_workers_expected):
             gunicorn_master_proc.send_signal(signal.SIGTTIN)
             excess += 1
             wait_until_true(lambda: num_workers_expected + excess ==
-                            get_num_workers_running(gunicorn_master_proc))
+                                    get_num_workers_running(gunicorn_master_proc))
 
     wait_until_true(lambda: num_workers_expected ==
-                    get_num_workers_running(gunicorn_master_proc))
+                            get_num_workers_running(gunicorn_master_proc))
 
     while True:
         num_workers_running = get_num_workers_running(gunicorn_master_proc)
@@ -714,7 +713,7 @@ def restart_workers(gunicorn_master_proc, num_workers_expected):
                 gunicorn_master_proc.send_signal(signal.SIGTTOU)
                 excess -= 1
                 wait_until_true(lambda: num_workers_expected + excess ==
-                                get_num_workers_running(gunicorn_master_proc))
+                                        get_num_workers_running(gunicorn_master_proc))
 
         # Start a new worker by asking gunicorn to increase number of workers
         elif num_workers_running == num_workers_expected:
@@ -906,6 +905,7 @@ def serve_logs(args):
             filename,
             mimetype="application/json",
             as_attachment=False)
+
     WORKER_LOG_SERVER_PORT = \
         int(conf.get('celery', 'WORKER_LOG_SERVER_PORT'))
     flask_app.run(
@@ -917,7 +917,7 @@ def worker(args):
     env['AIRFLOW_HOME'] = settings.AIRFLOW_HOME
 
     # Celery worker
-    from airflow.bin.airflow.executors.celery_executor import app as celery_app
+    from airflow.executors.celery_executor import app as celery_app
     from celery.bin import worker
 
     worker = worker.worker(app=celery_app)
@@ -966,8 +966,8 @@ def initdb(args):  # noqa
 def resetdb(args):
     print("DB: " + repr(settings.engine.url))
     if args.yes or input(
-            "This will drop existing tables if they exist. "
-            "Proceed? (y/n)").upper() == "Y":
+        "This will drop existing tables if they exist. "
+        "Proceed? (y/n)").upper() == "Y":
         logging.basicConfig(level=settings.LOGGING_LEVEL,
                             format=settings.SIMPLE_LOG_FORMAT)
         db_utils.resetdb()
@@ -985,7 +985,7 @@ def upgradedb(args):  # noqa
     if not ds_rows:
         qry = (
             session.query(DagRun.dag_id, DagRun.state, func.count('*'))
-            .group_by(DagRun.dag_id, DagRun.state)
+                .group_by(DagRun.dag_id, DagRun.state)
         )
         for dag_id, state, count in qry:
             session.add(DagStat(dag_id=dag_id, state=state, count=count))
@@ -1084,8 +1084,8 @@ def connections(args):
 
         session = settings.Session()
         if not (session
-                .query(Connection)
-                .filter(Connection.conn_id == new_conn.conn_id).first()):
+                    .query(Connection)
+                    .filter(Connection.conn_id == new_conn.conn_id).first()):
             session.add(new_conn)
             session.commit()
             msg = '\n\tSuccessfully added `conn_id`={conn_id} : {uri}\n'
@@ -1155,6 +1155,10 @@ def kerberos(args):  # noqa
         stdout.close()
         stderr.close()
     else:
-        airflow.bin.airflow.security.kerberos.run()
+        airflow.security.kerberos.run()
 
 
+
+
+def get_parser():
+    return CLIFactory.get_parser()

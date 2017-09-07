@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import unicode_literals
 
 import getpass
 import os
@@ -35,7 +36,9 @@ class BaseTaskRunner(LoggingMixin):
         associated task instance.
         :type local_task_job: airflow.jobs.LocalTaskJob
         """
+        # Pass task instance context into log handlers to setup the logger.
         self._task_instance = local_task_job.task_instance
+        self.set_logger_contexts(self._task_instance)
 
         popen_prepend = []
         cfg_path = None
@@ -76,9 +79,6 @@ class BaseTaskRunner(LoggingMixin):
         self._cfg_path = cfg_path
         self._command = popen_prepend + self._task_instance.command_as_list(
             raw=True,
-            ignore_all_deps=local_task_job.ignore_all_deps,
-            ignore_depends_on_past=local_task_job.ignore_depends_on_past,
-            ignore_ti_state=local_task_job.ignore_ti_state,
             pickle_id=local_task_job.pickle_id,
             mark_success=local_task_job.mark_success,
             job_id=local_task_job.id,
@@ -94,7 +94,7 @@ class BaseTaskRunner(LoggingMixin):
                 line = line.decode('utf-8')
             if len(line) == 0:
                 break
-            self.logger.info('Subtask: {}'.format(line.rstrip('\n')))
+            self.logger.info(u'Subtask: {}'.format(line.rstrip('\n')))
 
     def run_command(self, run_with, join_args=False):
         """

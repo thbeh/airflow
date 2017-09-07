@@ -3,7 +3,7 @@ from cli import *
 from dateutil.parser import parse as parsedate
 from airflow import settings
 from airflow import conf
-
+import argparse
 
 Arg = namedtuple(
     'Arg', ['flags', 'help', 'action', 'default', 'nargs', 'type', 'choices', 'metavar'])
@@ -34,16 +34,16 @@ class CLIFactory(object):
         'dry_run': Arg(
             ("-dr", "--dry_run"), "Perform a dry run", "store_true"),
         'pid': Arg(
-            ("--pid", ), "PID file location",
+            ("--pid",), "PID file location",
             nargs='?'),
         'daemon': Arg(
             ("-D", "--daemon"), "Daemonize instead of running "
                                 "in the foreground",
             "store_true"),
         'stderr': Arg(
-            ("--stderr", ), "Redirect stderr to this file"),
+            ("--stderr",), "Redirect stderr to this file"),
         'stdout': Arg(
-            ("--stdout", ), "Redirect stdout to this file"),
+            ("--stdout",), "Redirect stdout to this file"),
         'log_file': Arg(
             ("-l", "--log-file"), "Location of the log file"),
 
@@ -78,6 +78,14 @@ class CLIFactory(object):
                 "DO respect depends_on_past)."),
             "store_true"),
         'pool': Arg(("--pool",), "Resource pool to use"),
+        'delay_on_limit': Arg(
+            ("--delay_on_limit",),
+            help=("Amount of time in seconds to wait when the limit "
+                  "on maximum active dag runs (max_active_runs) has "
+                  "been reached before trying to execute a dag run "
+                  "again."),
+            type=float,
+            default=1.0),
         # list_tasks
         'tree': Arg(("-t", "--tree"), "Tree view", "store_true"),
         # list_dags
@@ -98,6 +106,9 @@ class CLIFactory(object):
         'exclude_subdags': Arg(
             ("-x", "--exclude_subdags"),
             "Exclude subdags", "store_true"),
+        'dag_regex': Arg(
+            ("-dx", "--dag_regex"),
+            "Search dag_id as regex instead of exact string", "store_true"),
         # trigger_dag
         'run_id': Arg(("-r", "--run_id"), "Helps to identify this run"),
         'conf': Arg(
@@ -194,16 +205,12 @@ class CLIFactory(object):
             ("--ship_dag",),
             "Pickles (serializes) the DAG and ships it to the worker",
             "store_true"),
-        'kubernetes_mode': Arg(
-            ("-km", "--kubernetes_mode"),
-            "Pod will not contact postgres instance. should only be used for kubernetes tasks",
-            "store_true"),
         'pickle': Arg(
             ("-p", "--pickle"),
             "Serialized pickle object of the entire dag (used internally)"),
         'job_id': Arg(("-j", "--job_id"), argparse.SUPPRESS),
         'cfg_path': Arg(
-            ("--cfg_path", ), "Path to config file to use instead of airflow.cfg"),
+            ("--cfg_path",), "Path to config file to use instead of airflow.cfg"),
         # webserver
         'port': Arg(
             ("-p", "--port"),
@@ -211,11 +218,11 @@ class CLIFactory(object):
             type=int,
             help="The port on which to run the server"),
         'ssl_cert': Arg(
-            ("--ssl_cert", ),
+            ("--ssl_cert",),
             default=conf.get('webserver', 'WEB_SERVER_SSL_CERT'),
             help="Path to the SSL certificate for the webserver"),
         'ssl_key': Arg(
-            ("--ssl_key", ),
+            ("--ssl_key",),
             default=conf.get('webserver', 'WEB_SERVER_SSL_KEY'),
             help="Path to the key to use with the SSL certificate"),
         'workers': Arg(
@@ -336,7 +343,7 @@ class CLIFactory(object):
                 'dag_id', 'task_regex', 'start_date', 'end_date',
                 'mark_success', 'local', 'donot_pickle', 'include_adhoc',
                 'bf_ignore_dependencies', 'bf_ignore_first_depends_on_past',
-                'subdir', 'pool', 'dry_run')
+                'subdir', 'pool', 'delay_on_limit', 'dry_run')
         }, {
             'func': list_tasks,
             'help': "List the tasks within a DAG",
@@ -347,7 +354,7 @@ class CLIFactory(object):
             'args': (
                 'dag_id', 'task_regex', 'start_date', 'end_date', 'subdir',
                 'upstream', 'downstream', 'no_confirm', 'only_failed',
-                'only_running', 'exclude_subdags'),
+                'only_running', 'exclude_subdags', 'dag_regex'),
         }, {
             'func': pause,
             'help': "Pause a DAG",
@@ -384,7 +391,7 @@ class CLIFactory(object):
                 'dag_id', 'task_id', 'execution_date', 'subdir',
                 'mark_success', 'force', 'pool', 'cfg_path',
                 'local', 'raw', 'ignore_all_dependencies', 'ignore_dependencies',
-                'ignore_depends_on_past', 'ship_dag', 'pickle', 'job_id', 'kubernetes_mode'),
+                'ignore_depends_on_past', 'ship_dag', 'pickle', 'job_id'),
         }, {
             'func': initdb,
             'help': "Initialize the metadata database",
@@ -487,7 +494,8 @@ class CLIFactory(object):
                 sp.add_argument(*arg.flags, **kwargs)
             sp.set_defaults(func=sub['func'])
         return parser
+Arg = namedtuple(
+    'Arg', ['flags', 'help', 'action', 'default', 'nargs', 'type', 'choices', 'metavar'])
+Arg.__new__.__defaults__ = (None, None, None, None, None, None, None)
 
 
-def get_parser():
-    return CLIFactory.get_parser()

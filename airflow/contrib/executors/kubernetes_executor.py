@@ -33,6 +33,13 @@ from airflow import configuration
 # TODO this is just for proof of concept. remove before merging.
 
 class KubeConfig:
+    @staticmethod
+    def safe_get(section, option, default):
+        try:
+            return configuration.get(section, option)
+        except AirflowConfigException:
+            return default
+
     def __init__(self):
         self.kube_image = configuration.get('core', 'k8s_image')
         self.git_repo = configuration.get('core', 'k8s_git_repo')
@@ -103,10 +110,6 @@ class AirflowKubernetesScheduler(object):
         key, command = next_job
         dag_id, task_id, execution_date = key
         self.logger.info("running for command {}".format(command))
-        cmd_args = "mkdir -p $AIRFLOW_HOME/dags/synched/git && cd $AIRFLOW_HOME/dags/synched/git &&" \
-                   "git init && git remote add origin {git_repo} && git pull origin {git_branch} --depth=1 &&" \
-                   "{command}".format(git_repo=self.kube_config.git_repo, git_branch=self.kube_config.git_branch,
-                                          command=command)
         pod_id = self._create_job_id_from_key(key=key)
         pod = KubernetesPodBuilder(
             image=self.kube_config.kube_image,

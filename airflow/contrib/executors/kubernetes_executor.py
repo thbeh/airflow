@@ -66,19 +66,19 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                                                                         event['type']))
             self.process_status(task.metadata.name, task.status.phase, task.metadata.labels)
 
-    def process_status(self, job_id, status, labels):
+    def process_status(self, pod_id, status, labels):
         if status == 'Pending':
-            self.logger.info("Event: {} Pending".format(job_id))
+            self.logger.info("Event: {} Pending".format(pod_id))
         elif status == 'Failed':
-            self.logger.info("Event: {} Failed".format(job_id))
-            self.watcher_queue.put((job_id, State.FAILED, labels))
+            self.logger.info("Event: {} Failed".format(pod_id))
+            self.watcher_queue.put((pod_id, State.FAILED, labels))
         elif status == 'Succeeded':
-            self.logger.info("Event: {} Succeeded".format(job_id))
-            self.watcher_queue.put((job_id, None, labels))
+            self.logger.info("Event: {} Succeeded".format(pod_id))
+            self.watcher_queue.put((pod_id, None, labels))
         elif status == 'Running':
-            self.logger.info("Event: {} is Running".format(job_id))
+            self.logger.info("Event: {} is Running".format(pod_id))
         else:
-            self.logger.info("Event: Invalid state: {} on job: {} with labels: {}".format(status, job_id, labels))
+            self.logger.info("Event: Invalid state: {} on pod: {} with labels: {}".format(status, pod_id, labels))
 
 
 class AirflowKubernetesScheduler(object):
@@ -153,15 +153,7 @@ class AirflowKubernetesScheduler(object):
         key = self._labels_to_key(labels)
         if key:
             self.logger.info("finishing job {}".format(key))
-            self.result_queue.put((key, state))
-
-    @staticmethod
-    def _create_job_id_from_key(key):
-        keystr = '-'.join([str(x).replace(' ', '-') for x in key[:2]])
-        job_fields = [keystr]
-        unformatted_job_id = '-'.join(job_fields)
-        job_id = unformatted_job_id.replace('_', '-')
-        return job_id
+            self.result_queue.put((key, state, pod_id))
 
     @staticmethod
     def _label_safe_datestring_to_datetime(string):
@@ -204,7 +196,7 @@ class KubernetesExecutor(BaseExecutor):
         while not self.result_queue.empty():
             results = self.result_queue.get()
             self.logger.info("reporting {}".format(results))
-            self.change_state(*results)
+            self._change_state(*results)
 
         if not self.task_queue.empty():
             (key, command) = self.task_queue.get()

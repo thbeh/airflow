@@ -84,20 +84,20 @@ spec:
         - name: airflow-dags
           mountPath: /root/airflow/dags
           subPath: git
-#        readinessProbe:
-#          initialDelaySeconds: 5
-#          timeoutSeconds: 5
-#          periodSeconds: 5
-#          httpGet:
-#            path: /admin
-#            port: 8080
-#        livenessProbe:
-#          initialDelaySeconds: 5
-#          timeoutSeconds: 5
-#          failureThreshold: 5
-#          httpGet:
-#            path: /admin
-#            port: 8080
+        readinessProbe:
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 5
+          httpGet:
+            path: /admin
+            port: 8080
+        livenessProbe:
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 5
+          httpGet:
+            path: /admin
+            port: 8080
       - name: scheduler
         image: {{docker_image}}
         args: ["scheduler"]

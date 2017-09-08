@@ -186,9 +186,23 @@ class AirflowKubernetesScheduler(object):
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
         self.api = client.CoreV1Api()
-        watch_function = self.api.list_namespaced_pod
-        w = KubernetesJobWatcher(watch_function, self.namespace, self.watcher_queue)
-        w.start()
+        self.watch_function = self.api.list_namespaced_pod
+        self.kube_watcher = self._make_kube_watcher()
+
+    def _make_kube_watcher(self):
+        watcher = KubernetesJobWatcher(self.watch_function, self.namespace, self.watcher_queue)
+        watcher.start()
+        return watcher
+
+    def _health_check_kube_watcher(self):
+        if self.kube_watcher.is_alive():
+            pass
+        else:
+            try:
+                self.kube_watcher.terminate()
+            except OSError:
+                pass
+            self.kube_watcher = self._make_kube_watcher()
 
     def run_next(self, next_job):
         """
@@ -230,6 +244,7 @@ class AirflowKubernetesScheduler(object):
         be sent back to the scheduler.
         :return:
         """
+        self._health_check_kube_watcher()
         while not self.watcher_queue.empty():
             self.process_watcher_task()
 

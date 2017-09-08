@@ -33,10 +33,20 @@ from airflow import configuration
 # TODO this is just for proof of concept. remove before merging.
 
 class KubeConfig:
+    core_section = "core"
+    kubernetes_section = "kubernetes"
+
     @staticmethod
     def safe_get(section, option, default):
         try:
             return configuration.get(section, option)
+        except AirflowConfigException:
+            return default
+
+    @staticmethod
+    def safe_getboolean(section, option, default):
+        try:
+            return configuration.getboolean(section, option)
         except AirflowConfigException:
             return default
 
@@ -156,13 +166,49 @@ class AirflowKubernetesScheduler(object):
             self.result_queue.put((key, state, pod_id))
 
     @staticmethod
+    def _strip_unsafe_kubernetes_special_chars(string):
+        """
+        Kubernetes only supports lowercase alphanumeric characters and "-" and "." in the pod name
+        However, there are special rules about how "-" and "." can be used so let's only keep alphanumeric chars
+        see here for detail: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
+        :param string:
+        :return:
+        """
+        return ''.join(ch.lower() for ind, ch in enumerate(string) if ch.isalnum())
+
+    @staticmethod
+    def _make_safe_pod_id(safe_dag_id, safe_task_id, safe_uuid):
+        """
+        Kubernetes pod names must be <= 253 chars and must pass the following regex for validation
+        "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        :param safe_dag_id: a dag_id with only alphanumeric characters
+        :param safe_task_id: a task_id with only alphanumeric characters
+        :param random_uuid: a uuid
+        :return:
+        """
+        MAX_POD_ID_LEN = 253
+
+        safe_key = safe_dag_id + safe_task_id
+
+        safe_pod_id = safe_key[:MAX_POD_ID_LEN-len(safe_uuid)-1] + "-" + safe_uuid
+
+        return safe_pod_id
+
+    @staticmethod
+    def _create_pod_id(dag_id, task_id):
+        safe_dag_id = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(dag_id)
+        safe_task_id = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(task_id)
+        safe_uuid = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(uuid4().hex)
+        return AirflowKubernetesScheduler._make_safe_pod_id(safe_dag_id, safe_task_id, safe_uuid)
+
+    @staticmethod
     def _label_safe_datestring_to_datetime(string):
         """
         Kubernetes doesn't like ":" in labels, since ISO datetime format uses ":" but not "_" let's replace ":" with "_"
         :param string: string
         :return: datetime.datetime object
         """
-        return datetime.strptime(string.replace("_", ":"), "%Y-%m-%dT%H:%M:%S")
+        return parser.parse(string.replace("_", ":"))
 
     @staticmethod
     def _datetime_to_label_safe_datestring(datetime_obj):

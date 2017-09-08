@@ -70,6 +70,8 @@ spec:
           value: KubernetesExecutor
         - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
           value: {{docker_image}}
+        - name: AIRFLOW__KUBERNETES__DELETE_WORKER_PODS
+          value: "True"
         # set these two confs
         - name: AIRFLOW__KUBERNETES__GIT_REPO
           value: https://github.com/grantnicholas/testdags.git
@@ -108,6 +110,8 @@ spec:
           value: KubernetesExecutor
         - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
           value: {{docker_image}}
+        - name: AIRFLOW__KUBERNETES__DELETE_WORKER_PODS
+          value: "True"
         # set these two confs
         - name: AIRFLOW__KUBERNETES__GIT_REPO
           value: https://github.com/grantnicholas/testdags.git

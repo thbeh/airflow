@@ -132,5 +132,5 @@ ENV/
 rat-results.txt
 
 # Kubernetes generated templated files
-kube/.generated/
-airflow.tar.gz
+*.generated
+*.tar.gz

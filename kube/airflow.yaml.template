@@ -44,12 +44,6 @@ spec:
           }
       ]'
     spec:
-#      initContainers:
-#      - name: init
-#        image: {{docker_image}}
-#        command: [
-#          "bash", "-c", "cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"
-#        ]
       containers:
       - name: web
         image: {{docker_image}}
@@ -58,25 +52,26 @@ spec:
           containerPort: 8080
         args: ["webserver"]
         env:
+        - name: AIRFLOW_KUBE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: AIRFLOW__CORE__EXECUTOR
           value: KubernetesExecutor
-        - name: AIRFLOW__CORE__K8S_IMAGE
+        - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
           value: {{docker_image}}
         # set these two confs
-        - name: AIRFLOW__CORE__K8S_GIT_REPO
+        - name: AIRFLOW__KUBERNETES__GIT_REPO
           value: https://github.com/grantnicholas/testdags.git
-        - name: AIRFLOW__CORE__K8S_GIT_BRANCH
+        - name: AIRFLOW__KUBERNETES__GIT_BRANCH
           value: master
-        # or set these two
-        - name: AIRFLOW__CORE__K8S_DAGS_VOLUME_CLAIM
+        # or this one
+        - name: AIRFLOW__KUBERNETES__DAGS_VOLUME_CLAIM
           value: airflow-dags
-        - name: AIRFLOW__CORE__K8S_DAGS_VOLUME_SUBPATH
-          value: git
         #
         volumeMounts:
         - name: airflow-dags
           mountPath: /root/airflow/dags
-          subPath: git
         readinessProbe:
           initialDelaySeconds: 5
           timeoutSeconds: 5
@@ -95,42 +90,28 @@ spec:
         image: {{docker_image}}
         args: ["scheduler"]
         env:
+        - name: AIRFLOW_KUBE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         - name: AIRFLOW__CORE__EXECUTOR
           value: KubernetesExecutor
-        - name: AIRFLOW__CORE__K8S_IMAGE
+        - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
           value: {{docker_image}}
         # set these two confs
-        - name: AIRFLOW__CORE__K8S_GIT_REPO
+        - name: AIRFLOW__KUBERNETES__GIT_REPO
           value: https://github.com/grantnicholas/testdags.git
-        - name: AIRFLOW__CORE__K8S_GIT_BRANCH
+        - name: AIRFLOW__KUBERNETES__GIT_BRANCH
           value: master
-        # or these two
-        - name: AIRFLOW__CORE__K8S_DAGS_VOLUME_CLAIM
+        # or set this one
+        - name: AIRFLOW__KUBERNETES__DAGS_VOLUME_CLAIM
           value: airflow-dags
-        - name: AIRFLOW__CORE__K8S_DAGS_VOLUME_SUBPATH
-          value: git
         #
         - name: AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL
           value: "60"
         volumeMounts:
         - name: airflow-dags
           mountPath: /root/airflow/dags
-          subPath: git
-      - name: sync
-        image: gcr.io/google_containers/git-sync:v2.0.4
-        securityContext:
-          privileged: true
-          runAsUser: 0
-        env:
-        - name: GIT_SYNC_REPO
-          value: https://github.com/grantnicholas/testdags.git
-        - name: GIT_SYNC_BRANCH
-          value: master
-        - name: GIT_SYNC_DEST
-          value: git
-        volumeMounts:
-        - name: airflow-dags
-          mountPath: /git
       volumes:
       - name: airflow-dags
         persistentVolumeClaim:

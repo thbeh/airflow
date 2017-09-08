@@ -17,6 +17,7 @@ import os
 import multiprocessing
 from queue import Queue
 from datetime import datetime
+from dateutil import parser
 from uuid import uuid4
 from kubernetes import watch, client
 from kubernetes.client.rest import ApiException
@@ -31,6 +32,9 @@ from airflow.contrib.kubernetes.pod import Pod
 
 
 class KubeConfig:
+    core_section = "core"
+    kubernetes_section = "kubernetes"
+
     @staticmethod
     def safe_get(section, option, default):
         try:
@@ -38,24 +42,33 @@ class KubeConfig:
         except AirflowConfigException:
             return default
 
+    @staticmethod
+    def safe_getboolean(section, option, default):
+        try:
+            return configuration.getboolean(section, option)
+        except AirflowConfigException:
+            return default
+
     def __init__(self):
-        self.dags_folder = configuration.get('core', 'dags_folder')
-        self.parallelism = configuration.getint('core', 'PARALLELISM')
-        self.kube_image = configuration.get('core', 'k8s_image')
-        self.kube_namespace = self.safe_get('core', 'k8s_namespace', 'default')
+        self.dags_folder = configuration.get(self.core_section, 'dags_folder')
+        self.parallelism = configuration.getint(self.core_section, 'PARALLELISM')
+        self.kube_image = configuration.get(self.kubernetes_section, 'container_image')
+        self.delete_worker_pods = self.safe_getboolean(self.kubernetes_section, 'delete_worker_pods', True)
+        self.kube_namespace = os.environ.get('AIRFLOW_KUBE_NAMESPACE', 'default')
 
         # These two props must be set together
-        self.git_repo = self.safe_get('core', 'k8s_git_repo', None)
-        self.git_branch = self.safe_get('core', 'k8s_git_branch', None)
+        self.git_repo = self.safe_get(self.kubernetes_section, 'git_repo', None)
+        self.git_branch = self.safe_get(self.kubernetes_section, 'git_branch', None)
 
-        # Or these two props
-        self.dags_volume_claim = self.safe_get('core', 'k8s_dags_volume_claim', None)
-        self.dags_volume_subpath = self.safe_get('core', 'k8s_dags_volume_subpath', None)
+        # Or this one prop
+        self.dags_volume_claim = self.safe_get(self.kubernetes_section, 'dags_volume_claim', None)
+        # And optionally this prop
+        self.dags_volume_subpath = self.safe_get(self.kubernetes_section, 'dags_volume_subpath', None)
 
         self._validate()
 
     def _validate(self):
-        if self.dags_volume_claim and self.dags_volume_subpath:
+        if self.dags_volume_claim:
             # do volume things
             pass
         elif self.git_repo and self.git_branch:
@@ -63,9 +76,9 @@ class KubeConfig:
             pass
         else:
             raise AirflowConfigException(
-                "Must set either: "
-                "`k8s_dags_volume_claim and k8s_dags_volume_subpath` or "
-                "`k8s_git_repo and k8s_git_branch`"
+                "In kubernetes mode you must set the following configs in the `kubernetes` section: "
+                "`dags_volume_claim` or "
+                "`git_repo and git_branch`"
             )
 
 
@@ -83,14 +96,17 @@ class PodMaker:
             }]
             volume_mounts = [{
                 "name": volume_name, "mountPath": self.kube_config.dags_folder,
-                "readOnly": True, "subPath": self.kube_config.dags_volume_subpath
+                "readOnly": True
             }]
+            if self.kube_config.dags_volume_subpath:
+                volume_mounts[0]["subPath"] = self.kube_config.dags_volume_subpath
+
             return volumes, volume_mounts
         else:
             return [], []
 
-    def _get_args(self, volumes, volume_mounts, airflow_command):
-        if len(volumes) > 0 and len(volume_mounts) > 0:
+    def _get_args(self, airflow_command):
+        if self.kube_config.dags_volume_claim:
             self.logger.info("Using k8s_dags_volume_claim for airflow dags")
             return [airflow_command]
         else:
@@ -109,7 +125,7 @@ class PodMaker:
             name=pod_id,
             image=self.kube_config.kube_image,
             cmds=["bash", "-cx", "--"],
-            args=self._get_args(volumes, volume_mounts, airflow_command),
+            args=self._get_args(airflow_command),
             labels={
                 "airflow-slave": "",
                 "dag_id": dag_id,
@@ -191,19 +207,21 @@ class AirflowKubernetesScheduler(object):
         self.logger.info("k8s: running for command {}".format(command))
         self.logger.info("k8s: launching image {}".format(self.kube_config.kube_image))
         pod = self.pod_maker.make_pod(
-            namespace=self.namespace, pod_id=uuid4().hex, dag_id=dag_id, task_id=task_id,
-            execution_date=self._datetime_to_label_safe_datestring(execution_date), airflow_command=command
+            namespace=self.namespace, pod_id=self._create_pod_id(dag_id, task_id),
+            dag_id=dag_id, task_id=task_id, execution_date=self._datetime_to_label_safe_datestring(execution_date),
+            airflow_command=command
         )
         # the watcher will monitor pods, so we do not block.
         self.launcher.run_pod_async(pod)
         self.logger.info("k8s: Job created!")
 
     def delete_pod(self, pod_id):
-        try:
-            self.api.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
-        except ApiException as e:
-            if e.status != 404:
-                raise
+        if self.kube_config.delete_worker_pods:
+            try:
+                self.api.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
+            except ApiException as e:
+                if e.status != 404:
+                    raise
 
     def sync(self):
         """
@@ -217,11 +235,47 @@ class AirflowKubernetesScheduler(object):
 
     def process_watcher_task(self):
         pod_id, state, labels = self.watcher_queue.get()
-        logging.info("Attempting to finish job; job_id: {}; state: {}; labels: {}".format(job_id, state, labels))
+        logging.info("Attempting to finish pod; pod_id: {}; state: {}; labels: {}".format(pod_id, state, labels))
         key = self._labels_to_key(labels)
         if key:
             self.logger.info("finishing job {}".format(key))
             self.result_queue.put((key, state, pod_id))
+
+    @staticmethod
+    def _strip_unsafe_kubernetes_special_chars(string):
+        """
+        Kubernetes only supports lowercase alphanumeric characters and "-" and "." in the pod name
+        However, there are special rules about how "-" and "." can be used so let's only keep alphanumeric chars
+        see here for detail: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
+        :param string:
+        :return:
+        """
+        return ''.join(ch.lower() for ind, ch in enumerate(string) if ch.isalnum())
+
+    @staticmethod
+    def _make_safe_pod_id(safe_dag_id, safe_task_id, safe_uuid):
+        """
+        Kubernetes pod names must be <= 253 chars and must pass the following regex for validation
+        "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        :param safe_dag_id: a dag_id with only alphanumeric characters
+        :param safe_task_id: a task_id with only alphanumeric characters
+        :param random_uuid: a uuid
+        :return:
+        """
+        MAX_POD_ID_LEN = 253
+
+        safe_key = safe_dag_id + safe_task_id
+
+        safe_pod_id = safe_key[:MAX_POD_ID_LEN-len(safe_uuid)-1] + "-" + safe_uuid
+
+        return safe_pod_id
+
+    @staticmethod
+    def _create_pod_id(dag_id, task_id):
+        safe_dag_id = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(dag_id)
+        safe_task_id = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(task_id)
+        safe_uuid = AirflowKubernetesScheduler._strip_unsafe_kubernetes_special_chars(uuid4().hex)
+        return AirflowKubernetesScheduler._make_safe_pod_id(safe_dag_id, safe_task_id, safe_uuid)
 
     @staticmethod
     def _label_safe_datestring_to_datetime(string):
@@ -230,7 +284,7 @@ class AirflowKubernetesScheduler(object):
         :param string: string
         :return: datetime.datetime object
         """
-        return datetime.strptime(string.replace("_", ":"), "%Y-%m-%dT%H:%M:%S")
+        return parser.parse(string.replace("_", ":"))
 
     @staticmethod
     def _datetime_to_label_safe_datestring(datetime_obj):

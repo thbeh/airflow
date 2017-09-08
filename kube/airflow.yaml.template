@@ -41,7 +41,7 @@ spec:
               "name": "init",
               "image": "{{docker_image}}",
               "command": [
-                "bash", "-cx", "rm -rf $AIRFLOW_HOME/dags/* && rm -rf $AIRFLOW_HOME/dags/.git && ls -la $AIRFLOW_HOME/dags/ && cd $AIRFLOW_HOME/dags && git init && git remote add origin https://github.com/grantnicholas/testdags.git && git pull origin master && cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"
+                "bash", "-cx", "rm -rf $AIRFLOW_HOME/dags/* && rm -rf $AIRFLOW_HOME/dags/.git && cd $AIRFLOW_HOME/dags && git init && git remote add origin https://github.com/grantnicholas/testdags.git && git pull origin master && cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"
               ],
               "env": [
                 {"name": "AIRFLOW__KUBERNETES__CONTAINER_IMAGE", "value": ""},

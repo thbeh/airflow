@@ -154,6 +154,7 @@ class AirflowKubernetesScheduler(object):
         :return:
 
         """
+        self._health_check_kube_watcher()
         while not self.watcher_queue.empty():
             self.end_task()
 

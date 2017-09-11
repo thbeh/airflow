@@ -28,6 +28,8 @@ from airflow import AirflowException
 from requests.exceptions import HTTPError
 from .kube_client import get_kube_client
 
+from .kube_client import get_kube_client
+
 
 class PodStatus(object):
     PENDING = 'pending'

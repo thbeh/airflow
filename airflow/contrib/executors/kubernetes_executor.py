@@ -62,18 +62,16 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
-        config.load_incluster_config()
-        self._api = client.CoreV1Api()
-        self._watch = watch.Watch()
 
     def run(self):
         from airflow.models import KubeResourceVersion
         from airflow import settings
 
+        kube_client = get_kube_client()
         resource_version = KubeResourceVersion.get_current_resource_version(session=settings.Session())
         while True:
             try:
-                resource_version = self._run(resource_version)
+                resource_version = self._run(kube_client, resource_version)
             except Exception:
                 self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
@@ -81,8 +79,9 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                 self.logger.warn("Watch died gracefully, starting back up with: "
                                  "last resource_version: {}".format(resource_version))
 
-    def _run(self, resource_version):
+    def _run(self, kube_client, resource_version):
         self.logger.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
+        watcher = watch.Watch()
 
     def _run(self):
         self.logger.info("Event: and now my watch begins")

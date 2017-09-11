@@ -140,17 +140,24 @@ class PodMaker:
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
-    def __init__(self, watch_function, namespace, watcher_queue):
+    def __init__(self, namespace, watcher_queue):
         self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
-        self._watch_function = watch_function
-        self._watch = watch.Watch()
         self.namespace = namespace
         self.watcher_queue = watcher_queue
+        self._api = client.CoreV1Api()
+        self._watch = watch.Watch()
 
     def run(self):
+        try:
+            self._run()
+        except Exception:
+            self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
+            raise
+
+    def _run(self):
         self.logger.info("Event: and now my watch begins")
-        for event in self._watch.stream(self._watch_function, self.namespace,
+        for event in self._watch.stream(self._api.list_namespaced_pod, self.namespace,
                                         label_selector='airflow-slave'):
             task = event['object']
             self.logger.info(
@@ -186,11 +193,10 @@ class AirflowKubernetesScheduler(object):
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
         self.api = client.CoreV1Api()
-        self.watch_function = self.api.list_namespaced_pod
         self.kube_watcher = self._make_kube_watcher()
 
     def _make_kube_watcher(self):
-        watcher = KubernetesJobWatcher(self.watch_function, self.namespace, self.watcher_queue)
+        watcher = KubernetesJobWatcher(self.namespace, self.watcher_queue)
         watcher.start()
         return watcher
 
@@ -198,10 +204,7 @@ class AirflowKubernetesScheduler(object):
         if self.kube_watcher.is_alive():
             pass
         else:
-            try:
-                self.kube_watcher.terminate()
-            except OSError:
-                pass
+            self.logger.error("Error while health checking kube watcher process. Process died for unknown reasons")
             self.kube_watcher = self._make_kube_watcher()
 
     def run_next(self, next_job):

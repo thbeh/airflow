@@ -62,18 +62,27 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
+        config.load_incluster_config()
         self._api = client.CoreV1Api()
         self._watch = watch.Watch()
 
     def run(self):
+        from airflow.models import KubeResourceVersion
+        from airflow import settings
+
+        resource_version = KubeResourceVersion.get_current_resource_version(session=settings.Session())
         while True:
             try:
-                self._run()
+                resource_version = self._run(resource_version)
             except Exception:
                 self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
             else:
-                self.logger.warn("Watcher process died gracefully: generator stopped returning values")
+                self.logger.warn("Watch died gracefully, starting back up with: "
+                                 "last resource_version: {}".format(resource_version))
+
+    def _run(self, resource_version):
+        self.logger.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
 
     def _run(self):
         self.logger.info("Event: and now my watch begins")
@@ -86,19 +95,22 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                                                                         event['type']))
             self.process_status(task.metadata.name, task.status.phase, task.metadata.labels)
 
-    def process_status(self, pod_id, status, labels):
+        return last_resource_version
+
+    def process_status(self, pod_id, status, labels, resource_version):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
-            self.watcher_queue.put((pod_id, State.FAILED, labels))
+            self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
             self.logger.info("Event: {} Succeeded".format(pod_id))
-            self.watcher_queue.put((pod_id, None, labels))
+            self.watcher_queue.put((pod_id, None, labels, resource_version))
         elif status == 'Running':
             self.logger.info("Event: {} is Running".format(pod_id))
         else:
-            self.logger.info("Event: Invalid state: {} on pod: {} with labels: {}".format(status, pod_id, labels))
+            self.logger.warn("Event: Invalid state: {} on pod: {} with labels: {} "
+                             "with resource_version: {}".format(status, pod_id, labels, resource_version))
 
 
 class AirflowKubernetesScheduler(object):
@@ -174,7 +186,7 @@ class AirflowKubernetesScheduler(object):
         key = self._labels_to_key(labels)
         if key:
             self.logger.info("finishing job {}".format(key))
-            self.result_queue.put((key, state, pod_id))
+            self.result_queue.put((key, state, pod_id, resource_version))
 
     @staticmethod
     def _strip_unsafe_kubernetes_special_chars(string):
@@ -242,6 +254,7 @@ class AirflowKubernetesScheduler(object):
 
 class KubernetesExecutor(BaseExecutor):
     def start(self):
+        from airflow.models import KubeResourceVersion
         self.logger.info('k8s: starting kubernetes executor')
         self._session = settings.Session()
         self.task_queue = Queue()
@@ -250,10 +263,16 @@ class KubernetesExecutor(BaseExecutor):
 
     def sync(self):
         self.kub_client.sync()
+
+        last_resource_version = None
         while not self.result_queue.empty():
             results = self.result_queue.get()
-            self.logger.info("reporting {}".format(results))
-            self._change_state(*results)
+            key, state, pod_id, resource_version = results
+            last_resource_version = resource_version
+            self.logger.info("Changing state of {}".format(results))
+            self._change_state(key, state, pod_id)
+
+        self.KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
 
         if not self.task_queue.empty():
             (key, command) = self.task_queue.get()

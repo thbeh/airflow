@@ -12,17 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import time
 import os
 import multiprocessing
 from queue import Queue
-from datetime import datetime
 from dateutil import parser
 from uuid import uuid4
 from kubernetes import watch, client
 from kubernetes.client.rest import ApiException
 from airflow import settings
 from airflow.contrib.kubernetes.pod_launcher import PodLauncher
+from airflow.contrib.kubernetes.kube_client import get_kube_client
 from airflow.executors.base_executor import BaseExecutor
 from airflow.models import TaskInstance
 from airflow.utils.state import State
@@ -145,42 +144,56 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
-        self._api = client.CoreV1Api()
-        self._watch = watch.Watch()
 
     def run(self):
+        from airflow.models import KubeResourceVersion
+        from airflow import settings
+
+        kube_client = get_kube_client()
+        resource_version = KubeResourceVersion.get_current_resource_version(session=settings.Session())
         while True:
             try:
-                self._run()
+                resource_version = self._run(kube_client, resource_version)
             except Exception:
                 self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
             else:
-                self.logger.warn("Watcher process died gracefully: generator stopped returning values")
+                self.logger.warn("Watch died gracefully, starting back up with: "
+                                 "last resource_version: {}".format(resource_version))
 
-    def _run(self):
-        self.logger.info("Event: and now my watch begins")
-        for event in self._watch.stream(self._api.list_namespaced_pod, self.namespace,
-                                        label_selector='airflow-slave'):
+    def _run(self, kube_client, resource_version):
+        self.logger.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
+        watcher = watch.Watch()
+
+        kwargs = {"label_selector": "airflow-slave"}
+        if resource_version:
+            kwargs["resource_version"] = resource_version
+
+        last_resource_version = None
+        for event in watcher.stream(kube_client.list_namespaced_pod, self.namespace, **kwargs):
             task = event['object']
-            self.logger.info(
-                "Event: {} had an event of type {}".format(task.metadata.name,
-                                                           event['type']))
-            self.process_status(task.metadata.name, task.status.phase, task.metadata.labels)
+            self.logger.info("Event: {} had an event of type {}".format(task.metadata.name, event['type']))
+            self.process_status(
+                task.metadata.name, task.status.phase, task.metadata.labels, task.metadata.resource_version
+            )
+            last_resource_version = task.metadata.resource_version
 
-    def process_status(self, pod_id, status, labels):
+        return last_resource_version
+
+    def process_status(self, pod_id, status, labels, resource_version):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
-            self.watcher_queue.put((pod_id, State.FAILED, labels))
+            self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
             self.logger.info("Event: {} Succeeded".format(pod_id))
-            self.watcher_queue.put((pod_id, None, labels))
+            self.watcher_queue.put((pod_id, None, labels, resource_version))
         elif status == 'Running':
             self.logger.info("Event: {} is Running".format(pod_id))
         else:
-            self.logger.info("Event: Invalid state: {} on pod: {} with labels: {}".format(status, pod_id, labels))
+            self.logger.warn("Event: Invalid state: {} on pod: {} with labels: {} "
+                             "with resource_version: {}".format(status, pod_id, labels, resource_version))
 
 
 class AirflowKubernetesScheduler(object):
@@ -192,10 +205,10 @@ class AirflowKubernetesScheduler(object):
         self.result_queue = result_queue
         self.namespace = self.kube_config.kube_namespace
         self.logger.info("k8s: using namespace {}".format(self.namespace))
-        self.launcher = PodLauncher()
+        self.kube_client = get_kube_client()
+        self.launcher = PodLauncher(kube_client=self.kube_client)
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
-        self.api = client.CoreV1Api()
         self.kube_watcher = self._make_kube_watcher()
 
     def _make_kube_watcher(self):
@@ -238,7 +251,7 @@ class AirflowKubernetesScheduler(object):
     def delete_pod(self, pod_id):
         if self.kube_config.delete_worker_pods:
             try:
-                self.api.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
+                self.kube_client.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
             except ApiException as e:
                 if e.status != 404:
                     raise
@@ -255,12 +268,12 @@ class AirflowKubernetesScheduler(object):
             self.process_watcher_task()
 
     def process_watcher_task(self):
-        pod_id, state, labels = self.watcher_queue.get()
+        pod_id, state, labels, resource_version = self.watcher_queue.get()
         logging.info("Attempting to finish pod; pod_id: {}; state: {}; labels: {}".format(pod_id, state, labels))
         key = self._labels_to_key(labels)
         if key:
             self.logger.info("finishing job {}".format(key))
-            self.result_queue.put((key, state, pod_id))
+            self.result_queue.put((key, state, pod_id, resource_version))
 
     @staticmethod
     def _strip_unsafe_kubernetes_special_chars(string):
@@ -333,6 +346,7 @@ class KubernetesExecutor(BaseExecutor):
         self._session = None
         self.result_queue = None
         self.kub_client = None
+        self.KubeResourceVersion = None
         super(KubernetesExecutor, self).__init__(parallelism=self.kube_config.parallelism)
 
     def clear_queued(self):
@@ -351,11 +365,13 @@ class KubernetesExecutor(BaseExecutor):
         self._session.commit()
 
     def start(self):
+        from airflow.models import KubeResourceVersion
         self.logger.info('k8s: starting kubernetes executor')
         self._session = settings.Session()
         self.task_queue = Queue()
         self.result_queue = Queue()
         self.kub_client = AirflowKubernetesScheduler(self.kube_config, self.task_queue, self.result_queue)
+        self.KubeResourceVersion = KubeResourceVersion
         self.clear_queued()
 
     def execute_async(self, key, command, queue=None):
@@ -364,17 +380,22 @@ class KubernetesExecutor(BaseExecutor):
 
     def sync(self):
         self.kub_client.sync()
+
+        last_resource_version = None
         while not self.result_queue.empty():
             results = self.result_queue.get()
-            self.logger.info("reporting {}".format(results))
-            self._change_state(*results)
+            key, state, pod_id, resource_version = results
+            last_resource_version = resource_version
+            self.logger.info("Changing state of {}".format(results))
+            self._change_state(key, state, pod_id)
+
+        self.KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
 
         if not self.task_queue.empty():
             key, command = self.task_queue.get()
             self.kub_client.run_next((key, command))
 
     def _change_state(self, key, state, pod_id):
-        self.logger.info("k8s: setting state of {} to {}".format(key, state))
         if state != State.RUNNING:
             self.kub_client.delete_pod(pod_id)
             try:

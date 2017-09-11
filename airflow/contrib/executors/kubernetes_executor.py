@@ -149,11 +149,14 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         self._watch = watch.Watch()
 
     def run(self):
-        try:
-            self._run()
-        except Exception:
-            self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
-            raise
+        while True:
+            try:
+                self._run()
+            except Exception:
+                self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
+                raise
+            else:
+                self.logger.warn("Watcher process died gracefully: generator stopped returning values")
 
     def _run(self):
         self.logger.info("Event: and now my watch begins")

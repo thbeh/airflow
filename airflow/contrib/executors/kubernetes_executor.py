@@ -57,15 +57,22 @@ class KubeConfig:
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
-    def __init__(self, watch_function, namespace, watcher_queue):
+    def __init__(self, namespace, watcher_queue):
         self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
-        self._watch_function = watch_function
-        self._watch = watch.Watch()
         self.namespace = namespace
         self.watcher_queue = watcher_queue
+        self._api = client.CoreV1Api()
+        self._watch = watch.Watch()
 
     def run(self):
+        try:
+            self._run()
+        except Exception:
+            self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
+            raise
+
+    def _run(self):
         self.logger.info("Event: and now my watch begins")
         self.logger.info("Event: proof of image change")
         self.logger.info("Event: running {} with {}".format(str(self._watch_function),

@@ -4888,8 +4888,8 @@ class KubeResourceVersion(Base):
     @staticmethod
     @provide_session
     def get_current_resource_version(session=None):
-        record = session.query(KubeResourceVersion).one()
-        return record.resource_version
+        (resource_version,) = session.query(KubeResourceVersion.resource_version).one()
+        return resource_version
 
     @staticmethod
     @provide_session

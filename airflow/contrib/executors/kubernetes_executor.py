@@ -17,10 +17,11 @@ import multiprocessing
 from queue import Queue
 from dateutil import parser
 from uuid import uuid4
-from kubernetes import watch, client, config
+from kubernetes import watch, client
 from kubernetes.client.rest import ApiException
 from airflow import settings
 from airflow.contrib.kubernetes.pod_launcher import PodLauncher
+from airflow.contrib.kubernetes.kube_client import get_kube_client
 from airflow.executors.base_executor import BaseExecutor
 from airflow.models import TaskInstance
 from airflow.utils.state import State
@@ -143,18 +144,16 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
-        config.load_incluster_config()
-        self._api = client.CoreV1Api()
-        self._watch = watch.Watch()
 
     def run(self):
         from airflow.models import KubeResourceVersion
         from airflow import settings
 
+        kube_client = get_kube_client()
         resource_version = KubeResourceVersion.get_current_resource_version(session=settings.Session())
         while True:
             try:
-                resource_version = self._run(resource_version)
+                resource_version = self._run(kube_client, resource_version)
             except Exception:
                 self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
@@ -162,15 +161,16 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                 self.logger.warn("Watch died gracefully, starting back up with: "
                                  "last resource_version: {}".format(resource_version))
 
-    def _run(self, resource_version):
+    def _run(self, kube_client, resource_version):
         self.logger.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
+        watcher = watch.Watch()
 
         kwargs = {"label_selector": "airflow-slave"}
         if resource_version:
             kwargs["resource_version"] = resource_version
 
         last_resource_version = None
-        for event in self._watch.stream(self._api.list_namespaced_pod, self.namespace, **kwargs):
+        for event in watcher.stream(kube_client.list_namespaced_pod, self.namespace, **kwargs):
             task = event['object']
             self.logger.info("Event: {} had an event of type {}".format(task.metadata.name, event['type']))
             self.process_status(
@@ -205,10 +205,10 @@ class AirflowKubernetesScheduler(object):
         self.result_queue = result_queue
         self.namespace = self.kube_config.kube_namespace
         self.logger.info("k8s: using namespace {}".format(self.namespace))
-        self.launcher = PodLauncher()
+        self.kube_client = get_kube_client()
+        self.launcher = PodLauncher(kube_client=self.kube_client)
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
-        self.api = client.CoreV1Api()
         self.kube_watcher = self._make_kube_watcher()
 
     def _make_kube_watcher(self):
@@ -251,7 +251,7 @@ class AirflowKubernetesScheduler(object):
     def delete_pod(self, pod_id):
         if self.kube_config.delete_worker_pods:
             try:
-                self.api.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
+                self.kube_client.delete_namespaced_pod(pod_id, self.namespace, body=client.V1DeleteOptions())
             except ApiException as e:
                 if e.status != 404:
                     raise

@@ -14,6 +14,7 @@
 
 import logging
 
+
 class Pod:
     """
         Represents a kubernetes pod and manages execution of a single pod.
@@ -28,7 +29,6 @@ class Pod:
         :param result: The result that will be returned to the operator after
                        successful execution of the pod
         :type result: any
-
     """
     pod_timeout = 3600
 
@@ -37,22 +37,27 @@ class Pod:
             image,
             envs,
             cmds,
-            secrets,
+            args=None,
+            secrets=None,
             labels=None,
             node_selectors=None,
             name=None,
-            volumes = [],
+            volumes=None,
+            volume_mounts=None,
             namespace='default',
-            result=None):
+            result=None,
+            image_pull_policy="IfNotPresent"):
         self.image = image
-        self.envs = envs if envs else {}
+        self.envs = envs or {}
         self.cmds = cmds
-        self.secrets = secrets
+        self.args = args or []
+        self.secrets = secrets or []
         self.result = result
-        self.labels = labels if labels else []
+        self.labels = labels or {}
         self.name = name
-        self.volumes = volumes
-        self.node_selectors = node_selectors if node_selectors else []
+        self.volumes = volumes or []
+        self.volume_mounts = volume_mounts or []
+        self.node_selectors = node_selectors or []
         self.namespace = namespace
+        self.image_pull_policy = image_pull_policy
         self.logger = logging.getLogger(self.__class__.__name__)
-

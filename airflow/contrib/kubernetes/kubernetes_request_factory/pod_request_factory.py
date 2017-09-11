@@ -30,9 +30,6 @@ spec:
     - name: base
       image: airflow-slave:latest
       command: ["/usr/local/airflow/entrypoint.sh", "/bin/bash sleep 25"]
-      volumeMounts:
-        - name: shared-data
-          mountPath: "/usr/local/airflow/dags"
   restartPolicy: Never
     """
 
@@ -45,10 +42,12 @@ spec:
         self.extract_name(pod, req)
         self.extract_labels(pod, req)
         self.extract_image(pod, req)
+        self.extract_image_pull_policy(pod, req)
         self.extract_cmds(pod, req)
-        if len(pod.node_selectors) > 0:
-            self.extract_node_selector(pod, req)
+        self.extract_args(pod, req)
+        self.extract_node_selector(pod, req)
         self.extract_secrets(pod, req)
         self.extract_volume_secrets(pod, req)
-        self.attach_volume_mounts(req=req, pod=pod)
+        self.attach_volumes(pod, req)
+        self.attach_volume_mounts(pod, req)
         return req

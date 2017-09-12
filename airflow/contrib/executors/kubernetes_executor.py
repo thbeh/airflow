@@ -25,7 +25,7 @@ from airflow import settings
 from airflow.contrib.kubernetes.kubernetes_request_factory import SimplePodRequestFactory
 from airflow.contrib.kubernetes.pod_launcher import incluster_namespace
 from airflow.executors.base_executor import BaseExecutor
-from airflow.models import TaskInstance
+from airflow.models import TaskInstance, KubeResourceVersion
 from airflow.utils.state import State
 from airflow import configuration
 
@@ -57,27 +57,24 @@ class KubeConfig:
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
-    def __init__(self, namespace, watcher_queue):
+    def __init__(self, namespace, watcher_queue, resource_version):
         self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
+        self.resource_version = resource_version
 
     def run(self):
-        from airflow.models import KubeResourceVersion
-        from airflow import settings
-
         kube_client = get_kube_client()
-        resource_version = KubeResourceVersion.get_current_resource_version(session=settings.Session())
         while True:
             try:
-                resource_version = self._run(kube_client, resource_version)
+                self.resource_version = self._run(kube_client, self.resource_version)
             except Exception:
                 self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
             else:
                 self.logger.warn("Watch died gracefully, starting back up with: "
-                                 "last resource_version: {}".format(resource_version))
+                                 "last resource_version: {}".format(self.resource_version))
 
     def _run(self, kube_client, resource_version):
         self.logger.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
@@ -253,7 +250,6 @@ class AirflowKubernetesScheduler(object):
 
 class KubernetesExecutor(BaseExecutor):
     def start(self):
-        from airflow.models import KubeResourceVersion
         self.logger.info('k8s: starting kubernetes executor')
         self._session = settings.Session()
         self.task_queue = Queue()
@@ -271,7 +267,7 @@ class KubernetesExecutor(BaseExecutor):
             self.logger.info("Changing state of {}".format(results))
             self._change_state(key, state, pod_id)
 
-        self.KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
+        KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
 
         if not self.task_queue.empty():
             (key, command) = self.task_queue.get()

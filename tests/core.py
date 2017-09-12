@@ -14,30 +14,29 @@
 
 from __future__ import print_function
 
-import bleach
 import doctest
 import json
 import logging
+import multiprocessing
 import os
 import re
-import unittest
-import multiprocessing
-import mock
-from numpy.testing import assert_array_almost_equal
-import tempfile
-from datetime import datetime, time, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 import signal
-from time import time as timetime
-from time import sleep
+import tempfile
+import unittest
 import warnings
+from datetime import datetime, time, timedelta
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from time import sleep
 
-from dateutil.relativedelta import relativedelta
+import bleach
+import mock
 import sqlalchemy
+from dateutil.relativedelta import relativedelta
+from numpy.testing import assert_array_almost_equal
 
 from airflow import configuration
-from airflow.executors import SequentialExecutor, LocalExecutor
+from airflow.executors import LocalExecutor, SequentialExecutor
 from airflow.models import Variable
 from tests.test_utils.fake_datetime import FakeDatetime
 
@@ -53,8 +52,7 @@ from airflow.operators.http_operator import SimpleHttpOperator
 from airflow.operators import sensors
 from airflow.hooks.base_hook import BaseHook
 from airflow.hooks.sqlite_hook import SqliteHook
-from airflow.hooks.postgres_hook import PostgresHook
-from airflow.bin import cli
+from airflow.bin.cli import cli
 from airflow.www import app as application
 from airflow.settings import Session
 from airflow.utils.state import State
@@ -423,7 +421,6 @@ class CoreTest(unittest.TestCase):
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, ignore_ti_state=True)
 
     def test_bash_operator_kill(self):
-        import subprocess
         import psutil
         sleep_time = "100%d" % os.getpid()
         t = BashOperator(

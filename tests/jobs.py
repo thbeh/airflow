@@ -22,33 +22,32 @@ import logging
 import multiprocessing
 import os
 import shutil
-import six
 import socket
 import threading
 import time
 import unittest
 from tempfile import mkdtemp
 
-from airflow import AirflowException, settings, models
-from airflow.bin import cli
+import six
+from mock import patch
+from sqlalchemy.orm.session import make_transient
+
+from airflow import AirflowException, models, settings
+from airflow import configuration
+from airflow.bin.cli import cli
 from airflow.executors import BaseExecutor, SequentialExecutor
-from airflow.jobs import BackfillJob, SchedulerJob, LocalTaskJob
-from airflow.models import DAG, DagModel, DagBag, DagRun, Pool, TaskInstance as TI
-from airflow.operators.dummy_operator import DummyOperator
+from airflow.jobs import BackfillJob, LocalTaskJob, SchedulerJob
+from airflow.models import DAG, DagBag, DagModel, DagRun, Pool, TaskInstance as TI
 from airflow.operators.bash_operator import BashOperator
+from airflow.operators.dummy_operator import DummyOperator
 from airflow.task_runner.base_task_runner import BaseTaskRunner
+from airflow.utils.dag_processing import SimpleDagBag, list_py_file_paths
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
 from airflow.utils.timeout import timeout
-from airflow.utils.dag_processing import SimpleDagBag, list_py_file_paths
-
-from mock import Mock, patch
-from sqlalchemy.orm.session import make_transient
+from tests.core import TEST_DAG_FOLDER
 from tests.executors.test_executor import TestExecutor
 
-from tests.core import TEST_DAG_FOLDER
-
-from airflow import configuration
 configuration.load_test_config()
 
 import sqlalchemy

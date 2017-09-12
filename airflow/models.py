@@ -3687,7 +3687,7 @@ class DAG(BaseDag, LoggingMixin):
         """
         Exposes a CLI specific to this DAG
         """
-        from airflow.bin import cli
+        from airflow.bin.cli import cli
         parser = cli.CLIFactory.get_parser(dag_parser=True)
         args = parser.parse_args()
         args.func(args, self)

@@ -34,7 +34,7 @@ from sqlalchemy.orm.session import make_transient
 
 from airflow import AirflowException, models, settings
 from airflow import configuration
-from airflow.bin.cli import cli
+from airflow.bin import cli
 from airflow.executors import BaseExecutor, SequentialExecutor
 from airflow.jobs import BackfillJob, LocalTaskJob, SchedulerJob
 from airflow.models import DAG, DagBag, DagModel, DagRun, Pool, TaskInstance as TI

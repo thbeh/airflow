@@ -257,6 +257,8 @@ class KubernetesExecutor(BaseExecutor):
         self.kub_client = AirflowKubernetesScheduler(self.task_queue, self.result_queue)
 
     def sync(self):
+        self.logger.info("self.running: {}".format(self.running))
+        self.logger.info("self.queued: {}".format(self.queued_tasks))
         self.kub_client.sync()
 
         last_resource_version = None

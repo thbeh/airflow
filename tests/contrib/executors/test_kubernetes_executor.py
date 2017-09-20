@@ -28,7 +28,7 @@ except ImportError:
 class TestAirflowKubernetesScheduler(unittest.TestCase):
 
     def _gen_random_string(self, str_len):
-        return ''.join([random.choice(string.printable) for _ in range(str_len)])
+        return ''.join([random.choice(string.printable) for _ in xrange(str_len)])
 
     def _cases(self):
         cases = [
@@ -41,23 +41,22 @@ class TestAirflowKubernetesScheduler(unittest.TestCase):
 
         cases.extend([
             (self._gen_random_string(200), self._gen_random_string(200))
-            for _ in range(100)
+            for _ in xrange(100)
         ])
 
         return cases
 
     def _is_valid_name(self, name):
         regex = "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
-        return (
-            len(name) <= 253 and
-            all(ch.lower() == ch for ch in name) and
-            re.match(regex, name))
+        return len(name) <= 253 and \
+               all(ch.lower() == ch for ch in name) and \
+               re.match(regex, name)
 
     @unittest.skipIf(AirflowKubernetesScheduler is None, 'kubernetes python package is not installed')
     def test_create_pod_id(self):
         for dag_id, task_id in self._cases():
             pod_name = AirflowKubernetesScheduler._create_pod_id(dag_id, task_id)
-            self.assertTrue(self._is_valid_name(pod_name))
+            assert self._is_valid_name(pod_name)
 
     @unittest.skipIf(AirflowKubernetesScheduler is None, "kubernetes python package is not installed")
     def test_execution_date_serialize_deserialize(self):
@@ -65,7 +64,7 @@ class TestAirflowKubernetesScheduler(unittest.TestCase):
         serialized_datetime = AirflowKubernetesScheduler._datetime_to_label_safe_datestring(datetime_obj)
         new_datetime_obj = AirflowKubernetesScheduler._label_safe_datestring_to_datetime(serialized_datetime)
 
-        self.assertEquals(datetime_obj, new_datetime_obj)
+        assert datetime_obj == new_datetime_obj
 
 
 if __name__ == '__main__':

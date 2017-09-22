@@ -212,14 +212,11 @@ class AirflowKubernetesScheduler(object):
 
     def run_next(self, next_job):
         """
-
         The run_next command will check the task_queue for any un-run jobs.
         It will then create a unique job-id, launch that job in the cluster,
         and store relevent info in the current_jobs map so we can track the job's
         status
-
         :return:
-
         """
         self.logger.info('k8s: job is {}'.format(str(next_job)))
         key, command = next_job

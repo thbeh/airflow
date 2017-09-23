@@ -193,7 +193,7 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
 
 
 class AirflowKubernetesScheduler(object):
-    def __init__(self, kube_config, task_queue, result_queue, session):
+    def __init__(self, kube_config, task_queue, result_queue, session, kube_client):
         self.logger = logging.getLogger(__name__)
         self.logger.info("creating kubernetes executor")
         self.kube_config = kube_config
@@ -201,7 +201,7 @@ class AirflowKubernetesScheduler(object):
         self.result_queue = result_queue
         self.namespace = self.kube_config.kube_namespace
         self.logger.info("k8s: using namespace {}".format(self.namespace))
-        self.kube_client = get_kube_client()
+        self.kube_client = kube_client
         self.launcher = PodLauncher(kube_client=self.kube_client)
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
@@ -343,22 +343,35 @@ class KubernetesExecutor(BaseExecutor):
         self.task_queue = None
         self._session = None
         self.result_queue = None
-        self.kub_client = None
+        self.kube_scheduler = None
+        self.kube_client = None
         super(KubernetesExecutor, self).__init__(parallelism=self.kube_config.parallelism)
 
-    def clear_queued(self):
+    def clear_not_launched_queued_tasks(self):
         """
-        If the airflow scheduler restarts with pending "Queued" tasks those queued tasks will never be scheduled
-        Thus, on starting up the scheduler let's set all the queued tasks state to None
-        There is a possibility two tasks will be launched like this:
-        one task is launched before scheduler crashes, then the scheduler restarts and its state is set to None,
-        then another task is launched, then both tasks start up
-        however only one of the tasks should be allowed to actually run due to guards in `TI.run` method
+        If the airflow scheduler restarts with pending "Queued" tasks, the tasks may or may not have been launched
+        Thus, on starting up the scheduler let's check every "Queued" task to see if it has been launched
+            (ie: if there is a corresponding pod on kubernetes)
+        If it has been launched then do nothing, otherwise reset the state to "None" so the task will be rescheduled
+        This will not be necessary in a future version of airflow in which there is proper support for State.LAUNCHED
         :return: None
         """
-        self._session.query(TaskInstance).filter(TaskInstance.state == State.QUEUED).update({
-            TaskInstance.state: State.NONE
-        })
+        queued_tasks = self._session.query(TaskInstance).filter(TaskInstance.state == State.QUEUED).all()
+        self.logger.info("When executor started up, found {} queued task instances".format(len(queued_tasks)))
+
+        for t in queued_tasks:
+            kwargs = dict(label_selector="dag_id={},task_id={},execution_date={}".format(
+                t.dag_id, t.task_id, AirflowKubernetesScheduler._datetime_to_label_safe_datestring(t.execution_date)
+            ))
+            pod_list = self.kube_client.list_namespaced_pod(self.kube_config.kube_namespace, **kwargs)
+            if len(pod_list.items) == 0:
+                self.logger.info("TaskInstance: {} found in queued state but was not launched, rescheduling".format(t))
+                self._session.query(TaskInstance).filter(
+                    TaskInstance.dag_id == t.dag_id,
+                    TaskInstance.task_id == t.task_id,
+                    TaskInstance.execution_date == t.execution_date
+                ).update({TaskInstance.state: State.NONE})
+
         self._session.commit()
 
     def start(self):
@@ -366,10 +379,11 @@ class KubernetesExecutor(BaseExecutor):
         self._session = settings.Session()
         self.task_queue = Queue()
         self.result_queue = Queue()
-        self.kub_client = AirflowKubernetesScheduler(
-            self.kube_config, self.task_queue, self.result_queue, self._session
+        self.kube_client = get_kube_client()
+        self.kube_scheduler = AirflowKubernetesScheduler(
+            self.kube_config, self.task_queue, self.result_queue, self._session, self.kube_client
         )
-        self.clear_queued()
+        self.clear_not_launched_queued_tasks()
 
     def execute_async(self, key, command, queue=None):
         self.logger.info("k8s: adding task {} with command {}".format(key, command))
@@ -378,7 +392,7 @@ class KubernetesExecutor(BaseExecutor):
     def sync(self):
         self.logger.info("self.running: {}".format(self.running))
         self.logger.info("self.queued: {}".format(self.queued_tasks))
-        self.kub_client.sync()
+        self.kube_scheduler.sync()
 
         last_resource_version = None
         while not self.result_queue.empty():
@@ -392,11 +406,11 @@ class KubernetesExecutor(BaseExecutor):
 
         if not self.task_queue.empty():
             key, command = self.task_queue.get()
-            self.kub_client.run_next((key, command))
+            self.kube_scheduler.run_next((key, command))
 
     def _change_state(self, key, state, pod_id):
         if state != State.RUNNING:
-            self.kub_client.delete_pod(pod_id)
+            self.kube_scheduler.delete_pod(pod_id)
             try:
                 self.running.pop(key)
             except KeyError:

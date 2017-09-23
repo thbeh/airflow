@@ -1,0 +1,145 @@
+# The backing volume can be anything you want, it just needs to be `ReadWriteOnce`
+# I'm using hostPath since minikube is nice for testing, but any (non-local) volume will work on a real cluster
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: airflow-dags
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/data/airflow-dags"
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: airflow-dags
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: airflow
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: airflow
+      annotations:
+        pod.beta.kubernetes.io/init-containers: '[
+          {
+              "name": "init",
+              "image": "{{docker_image}}",
+              "command": [
+                "bash", "-cx", "rm -rf $AIRFLOW_HOME/dags/* && rm -rf $AIRFLOW_HOME/dags/.git && cd $AIRFLOW_HOME/dags && git init && git remote add origin https://github.com/grantnicholas/testdags.git && git pull origin master && cd /usr/local/lib/python2.7/dist-packages/airflow && airflow initdb && alembic upgrade head"
+              ],
+              "env": [
+                {"name": "AIRFLOW__KUBERNETES__CONTAINER_IMAGE", "value": ""},
+                {"name": "AIRFLOW__KUBERNETES__DAGS_VOLUME_CLAIM", "value": "airflow-dags"},
+                {"name": "AIRFLOW__KUBERNETES__DAGS_VOLUME_SUBPATH", "value": "git"}
+              ],
+              "volumeMounts": [
+                {"name": "airflow-dags", "mountPath": "/root/airflow/dags"}
+              ]
+          }
+      ]'
+    spec:
+      containers:
+      - name: web
+        image: {{docker_image}}
+        ports:
+        - name: web
+          containerPort: 8080
+        args: ["webserver"]
+        env:
+        - name: AIRFLOW_KUBE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
+        - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
+          value: {{docker_image}}
+        - name: AIRFLOW__KUBERNETES__DELETE_WORKER_PODS
+          value: "True"
+        # set these two confs
+        - name: AIRFLOW__KUBERNETES__GIT_REPO
+          value: https://github.com/grantnicholas/testdags.git
+        - name: AIRFLOW__KUBERNETES__GIT_BRANCH
+          value: master
+        # or this one
+        - name: AIRFLOW__KUBERNETES__DAGS_VOLUME_CLAIM
+          value: airflow-dags
+        #
+        volumeMounts:
+        - name: airflow-dags
+          mountPath: /root/airflow/dags
+        readinessProbe:
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          periodSeconds: 5
+          httpGet:
+            path: /admin
+            port: 8080
+        livenessProbe:
+          initialDelaySeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 5
+          httpGet:
+            path: /admin
+            port: 8080
+      - name: scheduler
+        image: {{docker_image}}
+        args: ["scheduler"]
+        env:
+        - name: AIRFLOW_KUBE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: KubernetesExecutor
+        - name: AIRFLOW__KUBERNETES__CONTAINER_IMAGE
+          value: {{docker_image}}
+        - name: AIRFLOW__KUBERNETES__DELETE_WORKER_PODS
+          value: "True"
+        # set these two confs
+        - name: AIRFLOW__KUBERNETES__GIT_REPO
+          value: https://github.com/grantnicholas/testdags.git
+        - name: AIRFLOW__KUBERNETES__GIT_BRANCH
+          value: master
+        # or set this one
+        - name: AIRFLOW__KUBERNETES__DAGS_VOLUME_CLAIM
+          value: airflow-dags
+        #
+        - name: AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL
+          value: "60"
+        volumeMounts:
+        - name: airflow-dags
+          mountPath: /root/airflow/dags
+      volumes:
+      - name: airflow-dags
+        persistentVolumeClaim:
+          claimName: airflow-dags
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      nodePort: 30809
+  selector:
+    name: airflow
+

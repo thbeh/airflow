@@ -138,11 +138,12 @@ class PodMaker:
 
 
 class KubernetesJobWatcher(multiprocessing.Process, object):
-    def __init__(self, namespace, watcher_queue, resource_version):
+    def __init__(self, namespace, watcher_queue, pending_queue, resource_version):
         self.logger = logging.getLogger(__name__)
         multiprocessing.Process.__init__(self)
         self.namespace = namespace
         self.watcher_queue = watcher_queue
+        self.pending_queue = pending_queue
         self.resource_version = resource_version
 
     def run(self):
@@ -179,13 +180,16 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
     def process_status(self, pod_id, status, labels, resource_version):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
+            self.pending_queue.put((pod_id, True, labels, resource_version))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
+            self.pending_queue.put((pod_id, False, labels, resource_version))
             self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
             self.logger.info("Event: {} Succeeded".format(pod_id))
             self.watcher_queue.put((pod_id, None, labels, resource_version))
         elif status == 'Running':
+            self.pending_queue.put((pod_id, False, labels, resource_version))
             self.logger.info("Event: {} is Running".format(pod_id))
         else:
             self.logger.warn("Event: Invalid state: {} on pod: {} with labels: {} "
@@ -200,17 +204,20 @@ class AirflowKubernetesScheduler(object):
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.namespace = self.kube_config.kube_namespace
+        self.pending_tasks = set()
         self.logger.info("k8s: using namespace {}".format(self.namespace))
         self.kube_client = kube_client
         self.launcher = PodLauncher(kube_client=self.kube_client)
         self.pod_maker = PodMaker(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
+        self.pending_queue = multiprocessing.Queue()
         self._session = session
         self.kube_watcher = self._make_kube_watcher()
 
     def _make_kube_watcher(self):
         resource_version = KubeResourceVersion.get_current_resource_version(self._session)
-        watcher = KubernetesJobWatcher(self.namespace, self.watcher_queue, resource_version)
+        watcher = KubernetesJobWatcher(self.namespace, self.watcher_queue, self.pending_queue,
+                                       resource_version)
         watcher.start()
         return watcher
 
@@ -261,6 +268,8 @@ class AirflowKubernetesScheduler(object):
         self._health_check_kube_watcher()
         while not self.watcher_queue.empty():
             self.process_watcher_task()
+        while not self.pending_queue.empty():
+            self.process_pending_task()
 
     def process_watcher_task(self):
         pod_id, state, labels, resource_version = self.watcher_queue.get()
@@ -269,6 +278,21 @@ class AirflowKubernetesScheduler(object):
         if key:
             self.logger.info("finishing job {}".format(key))
             self.result_queue.put((key, state, pod_id, resource_version))
+
+    def process_pending_task(self):
+        pod_id, is_pending, labels, resource_version = self.pending_queue.get()
+        key = self._labels_to_key(labels=labels)
+        if key:
+            if is_pending:
+                self.pending_tasks.add(key)
+            else:
+                if key in self.pending_tasks:
+                    self.pending_tasks.remove(key)
+
+    def should_throttle(self):
+        return len(self.pending_tasks) >= 5
+
+
 
     @staticmethod
     def _strip_unsafe_kubernetes_special_chars(string):
@@ -401,7 +425,7 @@ class KubernetesExecutor(BaseExecutor):
 
         KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
 
-        if not self.task_queue.empty():
+        if not (self.task_queue.empty() or self.kube_scheduler.should_throttle()):
             key, command = self.task_queue.get()
             self.kube_scheduler.run_next((key, command))
 
@@ -431,3 +455,4 @@ class KubernetesExecutor(BaseExecutor):
 
     def terminate(self):
         pass
+

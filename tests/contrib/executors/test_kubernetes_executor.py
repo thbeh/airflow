@@ -28,7 +28,7 @@ except ImportError:
 class TestAirflowKubernetesScheduler(unittest.TestCase):
 
     def _gen_random_string(self, str_len):
-        return ''.join([random.choice(string.printable) for _ in xrange(str_len)])
+        return ''.join([random.choice(string.printable) for _ in range(str_len)])
 
     def _cases(self):
         cases = [

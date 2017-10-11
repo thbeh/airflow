@@ -41,7 +41,7 @@ class TestAirflowKubernetesScheduler(unittest.TestCase):
 
         cases.extend([
             (self._gen_random_string(200), self._gen_random_string(200))
-            for _ in xrange(100)
+            for _ in range(100)
         ])
 
         return cases

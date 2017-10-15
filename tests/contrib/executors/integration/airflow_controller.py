@@ -45,6 +45,14 @@ def run_command_in_pod(pod_name, container_name, command):
         pod_name=pod_name, container_name=container_name, command=command
     ))
 
+
+def taint_minikube_cluster():
+    return run_command("kubectl taint nodes minikube key1=value1:NoSchedule")
+
+def untaint_minikube_cluster():
+    return run_command("kubectl taint nodes minikube-")
+
+
 def _unpause_dag(dag_id, airflow_pod=None):
     airflow_pod = airflow_pod or _get_airflow_pod()
     return run_command_in_pod(airflow_pod, "scheduler", "airflow unpause {dag_id}".format(dag_id=dag_id))
@@ -83,6 +91,15 @@ def _parse_state(stdout):
 
     raise Exception("Unknown psql output: {}".format(stdout))
 
+def _count_entries(stdout):
+    end_line = "(1 row)"
+    count = 0
+    for line in stdout.split("\n"):
+        if end_line in line:
+            return count
+        count += 1
+
+    raise Exception("Unknown psql output: {}".format(stdout))
 def get_dag_run_state(dag_id, run_id, postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
     stdout, stderr = run_command_in_pod(
@@ -93,6 +110,14 @@ def get_dag_run_state(dag_id, run_id, postgres_pod=None):
     )
     return _parse_state(stdout)
 
+def get_num_pending_containers(postgres_pod=None):
+    postgres_pod = postgres_pod or _get_postgres_pod()
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select COUNT(*) from task_instance where state = PENDING" """
+    )
+    print(stdout)
+    return int(stdout.split("\n")[0])
 
 def dag_final_state(dag_id, run_id, postgres_pod=None, poll_interval=1, timeout=120):
     postgres_pod = postgres_pod or _get_postgres_pod()

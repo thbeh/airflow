@@ -18,7 +18,7 @@ from uuid import uuid4
 from tests.contrib.executors.integration.airflow_controller import (
     run_command, RunCommandError,
     run_dag, get_dag_run_state, dag_final_state, DagRunState,
-    kill_scheduler
+    kill_scheduler, taint_minikube_cluster, untaint_minikube_cluster, get_num_pending_containers
 )
 
 
@@ -52,6 +52,22 @@ class KubernetesExecutorTest(unittest.TestCase):
 
         self.assertEquals(dag_final_state(dag_id, run_id, timeout=180), DagRunState.SUCCESS)
 
+
+    @unittest.skipIf(SKIP_KUBE, 'Kubernetes integration tests are unsupported by this configuration')
+    def test_throttle_of_pending_tasks(self):
+        dag_id, run_id = "example_python_operator", uuid4().hex
+        dag_id2, run_id2 = "example_bash_operator", uuid4().hex
+        taint_minikube_cluster()
+
+        run_dag(dag_id, run_id)
+        run_dag(dag_id2, run_id2)
+
+        self.assertEquals(get_num_pending_containers(), 5)
+
+        untaint_minikube_cluster()
+        time.sleep(10)
+
+        self.assertEquals(get_num_pending_containers(), 0)
 
 if __name__ == "__main__":
     unittest.main()

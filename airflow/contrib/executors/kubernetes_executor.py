@@ -214,6 +214,13 @@ class AirflowKubernetesScheduler(object):
         self._session = session
         self.kube_watcher = self._make_kube_watcher()
 
+    def _check_for_pending_tasks(self):
+        kube_client = get_kube_client()
+        kwargs = {"label_selector": "airflow-slave"}
+        current_pods = kube_client.list_namespaced_pod(self.namespace, **kwargs)
+        pending_pods = [pod.name for pod in current_pods if pod.status.phase == 'Pending']
+        self.pending_tasks = set(pending_pods)
+
     def _make_kube_watcher(self):
         resource_version = KubeResourceVersion.get_current_resource_version(self._session)
         watcher = KubernetesJobWatcher(self.namespace, self.watcher_queue, self.pending_queue,

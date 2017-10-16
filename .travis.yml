@@ -47,6 +47,7 @@ env:
     # does not work with python 3
     - BOTO_CONFIG=/tmp/bogusvalue
   matrix:
+    - TOX_ENV=py27-cdh-airflow_backend_postgres RUN_KUBE_INTEGRATION=true
     - TOX_ENV=py27-cdh-airflow_backend_mysql
     - TOX_ENV=py27-cdh-airflow_backend_sqlite
     - TOX_ENV=py27-cdh-airflow_backend_postgres
@@ -60,7 +61,6 @@ env:
 #    - TOX_ENV=py34-hdp-airflow_backend_sqlite
 #    - TOX_ENV=py34-hdp-airflow_backend_postgres
     # Run integration tests on minikube for the KubernetesExecutor
-    - TOX_ENV=py27-cdh-airflow_backend_postgres RUN_KUBE_INTEGRATION=true
 matrix:
   exclude:
     - python: "3.4"

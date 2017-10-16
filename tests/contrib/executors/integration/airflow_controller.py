@@ -47,12 +47,10 @@ def run_command_in_pod(pod_name, container_name, command):
 
 
 def taint_minikube_cluster():
-    stdout, _ = run_command("kubectl get nodes")
-    print("nodes = {}".format(stdout))
-    return run_command("kubectl taint nodes minikube key=value:NoSchedule")
+    return run_command("kubectl taint nodes --all key=value:NoSchedule")
 
 def untaint_minikube_cluster():
-    return run_command("kubectl taint nodes minikube key-")
+    return run_command("kubectl taint nodes --all key-")
 
 
 def _unpause_dag(dag_id, airflow_pod=None):

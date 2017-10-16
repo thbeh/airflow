@@ -110,6 +110,14 @@ def get_dag_run_state(dag_id, run_id, postgres_pod=None):
     )
     return _parse_state(stdout)
 
+def get_all_containers(postgres_pod=None):
+    postgres_pod = postgres_pod or _get_postgres_pod()
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select * from task_instance" """
+    )
+    print(stdout)
+
 def get_num_pending_containers(postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
     stdout, stderr = run_command_in_pod(
@@ -117,7 +125,7 @@ def get_num_pending_containers(postgres_pod=None):
         """psql airflow -c "select COUNT(*) from task_instance where state='PENDING' or state='pending'" """
     )
     print(stdout)
-    return int(stdout.split("\n")[0])
+    return int(stdout.split("\n")[2])
 
 def dag_final_state(dag_id, run_id, postgres_pod=None, poll_interval=1, timeout=120):
     postgres_pod = postgres_pod or _get_postgres_pod()

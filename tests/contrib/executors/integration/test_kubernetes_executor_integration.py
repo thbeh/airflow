@@ -18,7 +18,8 @@ from uuid import uuid4
 from tests.contrib.executors.integration.airflow_controller import (
     run_command, RunCommandError,
     run_dag, get_dag_run_state, dag_final_state, DagRunState,
-    kill_scheduler, taint_minikube_cluster, untaint_minikube_cluster, get_num_pending_containers
+    kill_scheduler, taint_minikube_cluster, untaint_minikube_cluster,
+    get_num_pending_containers, get_all_containers
 )
 
 
@@ -63,7 +64,7 @@ class KubernetesExecutorTest(unittest.TestCase):
 
         run_dag(dag_id, run_id)
         run_dag(dag_id2, run_id2)
-
+        get_all_containers()
         self.assertEquals(get_num_pending_containers(), 5)
 
         untaint_minikube_cluster()

@@ -47,6 +47,8 @@ def run_command_in_pod(pod_name, container_name, command):
 
 
 def taint_minikube_cluster():
+    stdout, _ = run_command("kubectl get nodes")
+    print("nodes = {}".format(stdout))
     return run_command("kubectl taint nodes minikube key=value:NoSchedule")
 
 def untaint_minikube_cluster():

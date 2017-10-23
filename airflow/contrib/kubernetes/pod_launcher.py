@@ -106,7 +106,7 @@ class PodLauncher(LoggingMixin):
     def _task_status(self, event):
         # type: (V1Pod) -> State
         task = event['object']
-        self.logger.info(
+        self.log.info(
             "Event: {} had an event of type {}".format(task.metadata.name,
                                                        event['type']))
         status = self.process_status(task.metadata.name, task.status.phase)

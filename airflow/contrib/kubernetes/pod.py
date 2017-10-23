@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 
 class Pod:
     """
@@ -46,7 +44,10 @@ class Pod:
             volume_mounts=None,
             namespace='default',
             result=None,
-            image_pull_policy="IfNotPresent"):
+            image_pull_policy="IfNotPresent",
+            image_pull_secrets=None,
+            init_containers=None,
+            service_account_name=None):
         self.image = image
         self.envs = envs or {}
         self.cmds = cmds
@@ -60,4 +61,6 @@ class Pod:
         self.node_selectors = node_selectors or []
         self.namespace = namespace
         self.image_pull_policy = image_pull_policy
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.image_pull_secrets = image_pull_secrets
+        self.init_containers = init_containers
+        self.service_account_name = service_account_name

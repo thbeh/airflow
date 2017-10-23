@@ -33,7 +33,6 @@ class KubernetesPodBuilder(Pod):
         self.cmds = cmds
         self.kub_req_factory = kub_req_factory
         self.namespace = namespace
-        self.logger = logging.getLogger(self.__class__.__name__)
         self.envs = {}
         self.labels = {}
         self.secrets = {}

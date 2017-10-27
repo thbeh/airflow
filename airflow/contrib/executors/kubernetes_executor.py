@@ -25,12 +25,57 @@ from airflow import settings
 from airflow.contrib.kubernetes.kubernetes_request_factory import SimplePodRequestFactory
 from airflow.contrib.kubernetes.pod_launcher import incluster_namespace
 from airflow.executors.base_executor import BaseExecutor
+from airflow.executors import Executors
 from airflow.models import TaskInstance, KubeResourceVersion
 from airflow.utils.state import State
 from airflow import configuration
 
 
 # TODO this is just for proof of concept. remove before merging.
+
+
+class KubernetesExecutorConfig:
+
+    def __init__(self, image=None, request_memory=None, request_cpu=None, limit_memory=None, limit_cpu=None):
+        self.image = image
+        self.request_memory = request_memory
+        self.request_cpu = request_cpu
+        self.limit_memory = limit_memory
+        self.limit_cpu = limit_cpu
+
+    def __repr__(self):
+        return "{}(image={}, request_memory={} ,request_cpu={}, limit_memory={}, limit_cpu={})".format(
+            KubernetesExecutorConfig.__name__,
+            self.image, self.request_memory, self.request_cpu, self.limit_memory,self.limit_cpu
+        )
+
+    @staticmethod
+    def from_dict(obj):
+        if obj is None:
+            return KubernetesExecutorConfig()
+
+        if not isinstance(obj, dict):
+            raise TypeError("Cannot convert a non-dictionary object into a KubernetesExecutorConfig")
+
+        namespaced = obj.get(Executors.KubernetesExecutor, {})
+
+        return KubernetesExecutorConfig(
+            image=namespaced.get("image", None),
+            request_memory=namespaced.get("request_memory", None),
+            request_cpu=namespaced.get("request_cpu", None),
+            limit_memory=namespaced.get("limit_memory", None),
+            limit_cpu=namespaced.get("limit_cpu", None)
+        )
+
+    def as_dict(self):
+        return {
+            "image": self.image,
+            "request_memory": self.request_memory,
+            "request_cpu": self.request_cpu,
+            "limit_memory": self.limit_memory,
+            "limit_cpu": self.limit_cpu
+        }
+
 
 class KubeConfig:
     core_section = "core"
@@ -133,8 +178,8 @@ class AirflowKubernetesScheduler(object):
         :return:
 
         """
-        self.log.debug('k8s: job is {}'.format(str(next_job)))
-        key, command = next_job
+        self.log.info('k8s: job is {}'.format(str(next_job)))
+        key, command, kube_executor_config = next_job
         dag_id, task_id, execution_date = key
         self.logger.info("running for command {}".format(command))
         pod_id = self._create_job_id_from_key(key=key)

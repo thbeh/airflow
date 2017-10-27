@@ -121,7 +121,9 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
                               "last resource_version: {}".format(self.resource_version))
 
     def _run(self, kube_client, resource_version):
-        self.log.info("Event: and now my watch begins starting at resource_version: {}".format(resource_version))
+        self.log.info(
+            "Event: and now my watch begins starting at resource_version: {}"
+            .format(resource_version))
         watcher = watch.Watch()
 
     def _run(self):
@@ -150,7 +152,8 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
             self.log.info("Event: {} is Running".format(pod_id))
         else:
             self.log.warn("Event: Invalid state: {} on pod: {} with labels: {} "
-                             "with resource_version: {}".format(status, pod_id, labels, resource_version))
+                          "with resource_version: {}"
+                          .format(status, pod_id, labels, resource_version))
 
 
 class AirflowKubernetesScheduler(object):
@@ -232,10 +235,12 @@ class AirflowKubernetesScheduler(object):
     def _strip_unsafe_kubernetes_special_chars(string):
         """
         Kubernetes only supports lowercase alphanumeric characters and "-" and "." in the pod name
-        However, there are special rules about how "-" and "." can be used so let's only keep alphanumeric chars
-        see here for detail: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
-        :param string:
-        :return:
+        However, there are special rules about how "-" and "." can be used so let's only keep
+        alphanumeric chars  see here for detail:
+        https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
+
+        :param string: The requested Pod name
+        :return: ``str`` Pod name stripped of any unsafe characters
         """
         return ''.join(ch.lower() for ind, ch in enumerate(string) if ch.isalnum())
 
@@ -244,10 +249,11 @@ class AirflowKubernetesScheduler(object):
         """
         Kubernetes pod names must be <= 253 chars and must pass the following regex for validation
         "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+
         :param safe_dag_id: a dag_id with only alphanumeric characters
         :param safe_task_id: a task_id with only alphanumeric characters
         :param random_uuid: a uuid
-        :return:
+        :return: ``str`` valid Pod name of appropriate length
         """
         MAX_POD_ID_LEN = 253
 
@@ -267,7 +273,9 @@ class AirflowKubernetesScheduler(object):
     @staticmethod
     def _label_safe_datestring_to_datetime(string):
         """
-        Kubernetes doesn't like ":" in labels, since ISO datetime format uses ":" but not "_" let's replace ":" with "_"
+        Kubernetes doesn't permit ":" in labels. ISO datetime format uses ":" but not "_", let's
+        replace ":" with "_"
+
         :param string: string
         :return: datetime.datetime object
         """
@@ -276,7 +284,8 @@ class AirflowKubernetesScheduler(object):
     @staticmethod
     def _datetime_to_label_safe_datestring(datetime_obj):
         """
-        Kubernetes doesn't like ":" in labels, since ISO datetime format uses ":" but not "_" let's replace ":" with "_"
+        Kubernetes doesn't like ":" in labels, since ISO datetime format uses ":" but not "_" let's
+        replace ":" with "_"
         :param datetime_obj: datetime.datetime object
         :return: ISO-like string representing the datetime
         """
@@ -284,7 +293,9 @@ class AirflowKubernetesScheduler(object):
 
     def _labels_to_key(self, labels):
         try:
-            return labels["dag_id"], labels["task_id"], self._label_safe_datestring_to_datetime(labels["execution_date"])
+            return (
+                labels["dag_id"], labels["task_id"],
+                self._label_safe_datestring_to_datetime(labels["execution_date"]))
         except Exception as e:
             self.log.warn("Error while converting labels to key; labels: {}; exception: {}".format(
                 labels, e
@@ -313,7 +324,8 @@ class KubernetesExecutor(BaseExecutor):
             self.log.info("Changing state of {}".format(results))
             self._change_state(key, state, pod_id)
 
-        KubeResourceVersion.checkpoint_resource_version(last_resource_version, session=self._session)
+        KubeResourceVersion.checkpoint_resource_version(
+            last_resource_version, session=self._session)
 
         if not self.task_queue.empty():
             (key, command) = self.task_queue.get()

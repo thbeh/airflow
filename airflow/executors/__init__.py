@@ -45,6 +45,14 @@ def GetDefaultExecutor():
     return DEFAULT_EXECUTOR
 
 
+class Executors:
+    LocalExecutor = "LocalExecutor"
+    SequentialExecutor = "SequentialExecutor"
+    CeleryExecutor = "CeleryExecutor"
+    DaskExecutor = "DaskExecutor"
+    MesosExecutor = "MesosExecutor"
+    KubernetesExecutor = "KubernetesExecutor"
+
 
 
 def _get_executor(executor_name):
@@ -65,7 +73,7 @@ def _get_executor(executor_name):
     elif executor_name == Executors.MesosExecutor:
         from airflow.contrib.executors.mesos_executor import MesosExecutor
         return MesosExecutor()
-    elif executor_name == 'KubernetesExecutor':
+    elif executor_name == Executors.KubernetesExecutor:
         from airflow.contrib.executors.kubernetes_executor import KubernetesExecutor
         return KubernetesExecutor()
     else:

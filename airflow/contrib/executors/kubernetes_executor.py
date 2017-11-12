@@ -181,6 +181,7 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
             self.pending_queue.put((pod_id, True, labels, resource_version))
+            # self.watcher_queue.put((pod_id, State.LAUNCHED, labels, resource_version))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
             self.pending_queue.put((pod_id, False, labels, resource_version))

@@ -57,7 +57,7 @@ spec:
           {
               "name": "init",
               "image": "{{docker_image}}",
-              "imagePullPolicy": "IfNotPresent",
+              "imagePullPolicy": "Never",
               "command": [
                 "bash", "-cx", "cd /usr/local/lib/python2.7/dist-packages/airflow && cp -R example_dags/* $AIRFLOW_HOME/dags/ && airflow initdb && alembic upgrade head"
               ],

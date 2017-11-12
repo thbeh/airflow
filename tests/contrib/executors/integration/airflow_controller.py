@@ -121,9 +121,19 @@ def get_all_containers(postgres_pod=None):
 
 def get_num_pending_containers(postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
+
     stdout, stderr = run_command_in_pod(
         postgres_pod, "postgres",
-        """psql airflow -c "select COUNT(*) from task_instance where state='PENDING' or state='pending'" """
+        """psql airflow -c "select task_id, state from task_instance where 
+        state='launched'" """
+    )
+    print("all")
+    print(stdout)
+
+
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select COUNT(*) from task_instance where state='launched'" """
     )
     print(stdout)
     return int(stdout.split("\n")[2])

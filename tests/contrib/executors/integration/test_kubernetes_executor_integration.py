@@ -43,11 +43,17 @@ class KubernetesExecutorTest(unittest.TestCase):
     @unittest.skipIf(SKIP_KUBE, 'Kubernetes integration tests are unsupported by this configuration')
     def test_start_dag_then_kill_scheduler_then_ensure_dag_succeeds(self):
         dag_id, run_id = "example_python_operator", uuid4().hex
+        print("running DAG")
         run_dag(dag_id, run_id)
 
         self.assertEquals(get_dag_run_state(dag_id, run_id), DagRunState.RUNNING)
 
-        time.sleep(10)
+        i = 0
+        while get_num_pending_containers() > 0:
+            self.assertLess(i, 100, "there was an infinite loop caused by this test")
+            print("loop")
+            time.sleep(1)
+            i += 1
 
         kill_scheduler()
 
@@ -55,22 +61,34 @@ class KubernetesExecutorTest(unittest.TestCase):
 
 
 
+    def untaint(self):
+        untaint_minikube_cluster()
 
     @unittest.skipIf(SKIP_KUBE, 'Kubernetes integration tests are unsupported by this configuration')
     def test_throttle_of_pending_tasks(self):
         dag_id, run_id = "example_python_operator", uuid4().hex
-        dag_id2, run_id2 = "example_bash_operator", uuid4().hex
-        taint_minikube_cluster()
+        print("tainting cluster")
 
         run_dag(dag_id, run_id)
-        run_dag(dag_id2, run_id2)
-        get_all_containers()
+        time.sleep(2)
+        taint_minikube_cluster()
+        i = 0
+        while get_num_pending_containers() < 5 and i < 15:
+            print("loop")
+            time.sleep(1)
+            i += 1
         self.assertEquals(get_num_pending_containers(), 5)
 
+        print("untaint cluster")
         untaint_minikube_cluster()
-        time.sleep(10)
+        i = 0
+        while get_num_pending_containers() > 0:
+            self.assertLess(i, 100, "there was an infinite loop caused by this test")
+            print("loop")
+            time.sleep(1)
+            i += 1
 
         self.assertEquals(get_num_pending_containers(), 0)
 
 if __name__ == "__main__":
-    unittest.main()
+    pass

@@ -16,6 +16,7 @@
 #  under the License.                                           *
 
 FROM ubuntu:16.04
+# FROM artprod.dev.bloomberg.com/bfs/base-ubuntu:16.04.1-SNAPSHOT
 
 # install deps
 RUN apt-get update -y && apt-get install -y \

@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 
 import yaml
-import airflow.contrib.kubernetes.kubernetes_request_factory.kubernetes_request_factory as kreq
+from airflow.contrib.kubernetes.kubernetes_request_factory.kubernetes_request_factory import (
+    KubernetesRequestFactory)
 from airflow.contrib.kubernetes.pod import Pod
 
 
-class SimplePodRequestFactory(kreq.KubernetesRequestFactory):
+class SimplePodRequestFactory(KubernetesRequestFactory):
     """
-        Request generator for a simple pod.
+    Request generator for a simple pod.
     """
     _yaml = """apiVersion: v1
 kind: Pod
@@ -45,8 +46,12 @@ spec:
         self.extract_cmds(pod, req)
         self.extract_args(pod, req)
         self.extract_node_selector(pod, req)
-        self.extract_secrets(pod, req)
+        self.extract_env_and_secrets(pod, req)
         self.extract_volume_secrets(pod, req)
         self.attach_volumes(pod, req)
         self.attach_volume_mounts(pod, req)
+        self.extract_resources(pod, req)
+        self.extract_service_account_name(pod, req)
+        self.extract_init_containers(pod, req)
+        self.extract_image_pull_secrets(pod, req)
         return req

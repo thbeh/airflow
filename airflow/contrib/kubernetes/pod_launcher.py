@@ -11,34 +11,49 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import json
+
 from airflow.contrib.kubernetes.pod import Pod
-from airflow.contrib.kubernetes.kubernetes_request_factory.pod_request_factory import SimplePodRequestFactory
+from airflow.contrib.kubernetes.kubernetes_request_factory.pod_request_factory import (
+    SimplePodRequestFactory)
+from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.utils.state import State
 from kubernetes import watch
 from kubernetes.client import V1Pod
-from airflow.utils.state import State
-import json
-import logging
+from kubernetes.client.rest import ApiException
 
 from .kube_client import get_kube_client
 
 
-class PodLauncher:
+class PodStatus(object):
+    PENDING = 'pending'
+    RUNNING = 'running'
+    FAILED = 'failed'
+    SUCCEEDED = 'succeeded'
+
+
+class PodLauncher(LoggingMixin):
     def __init__(self, kube_client=None):
         self.kube_req_factory = SimplePodRequestFactory()
         self._client = kube_client or get_kube_client()
         self._watch = watch.Watch()
-        self.logger = logging.getLogger(__name__)
 
     def run_pod_async(self, pod):
         req = self.kube_req_factory.create(pod)
-        print(json.dumps(req))
-        resp = self._client.create_namespaced_pod(body=req, namespace=pod.namespace)
+        self.log.debug('Pod Creation Request: \n{}'.format(json.dumps(req, indent=2)))
+        try:
+            resp = self._client.create_namespaced_pod(body=req, namespace=pod.namespace)
+            self.log.debug('Pod Creation Response: {}'.format(resp))
+        except ApiException:
+            self.log.exception('Exception when attempting to create Namespaced Pod.')
+            raise
         return resp
 
     def run_pod(self, pod):
         # type: (Pod) -> State
         """
-            Launches the pod synchronously and waits for completion.
+        Launches the pod synchronously and waits for completion.
         """
         resp = self.run_pod_async(pod)
         final_status = self._monitor_pod(pod)
@@ -54,7 +69,7 @@ class PodLauncher:
     def _task_status(self, event):
         # type: (V1Pod) -> State
         task = event['object']
-        self.logger.info(
+        self.log.info(
             "Event: {} had an event of type {}".format(task.metadata.name,
                                                        event['type']))
         status = self.process_status(task.metadata.name, task.status.phase)
@@ -64,16 +79,16 @@ class PodLauncher:
         return self._client.read_namespaced_pod(pod.name, pod.namespace)
 
     def process_status(self, job_id, status):
-        if status == 'Pending':
+        if status == PodStatus.PENDING:
             return State.QUEUED
-        elif status == 'Failed':
-            self.logger.info("Event: {} Failed".format(job_id))
+        elif status == PodStatus.FAILED:
+            self.log.info("Event: {} Failed".format(job_id))
             return State.FAILED
-        elif status == 'Succeeded':
-            self.logger.info("Event: {} Succeeded".format(job_id))
+        elif status == PodStatus.SUCCEEDED:
+            self.log.info("Event: {} Succeeded".format(job_id))
             return State.SUCCESS
-        elif status == 'Running':
+        elif status == PodStatus.RUNNING:
             return State.RUNNING
         else:
-            self.logger.info("Event: Invalid state {} on job {}".format(status, job_id))
+            self.log.info("Event: Invalid state {} on job {}".format(status, job_id))
             return State.FAILED

@@ -34,7 +34,6 @@ class State(object):
     # set by a task
     QUEUED = "queued"
     RUNNING = "running"
-    # LAUNCHED = "launched"
     SUCCESS = "success"
     SHUTDOWN = "shutdown"  # External request to shut down
     FAILED = "failed"

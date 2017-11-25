@@ -12,23 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
+
+class Resources:
+    def __init__(self, request_memory=None, request_cpu=None, limit_memory=None, limit_cpu=None):
+        self.request_memory = request_memory
+        self.request_cpu = request_cpu
+        self.limit_memory = limit_memory
+        self.limit_cpu = limit_cpu
+
+    def is_empty_resource_request(self):
+        return not self.has_limits() and not self.has_requests()
+
+    def has_limits(self):
+        return self.limit_cpu is not None or self.limit_memory is not None
+
+    def has_requests(self):
+        return self.request_cpu is not None or self.request_memory is not None
 
 
 class Pod:
     """
-        Represents a kubernetes pod and manages execution of a single pod.
-        :param image: The docker image
-        :type image: str
-        :param env: A dict containing the environment variables
-        :type env: dict
-        :param cmds: The command to be run on the pod
-        :type cmd: list str
-        :param secrets: Secrets to be launched to the pod
-        :type secrets: list Secret
-        :param result: The result that will be returned to the operator after
-                       successful execution of the pod
-        :type result: any
+    Represents a kubernetes pod and manages execution of a single pod.
+
+    :param image: The docker image
+    :type image: str
+    :param env: A dict containing the environment variables
+    :type env: dict
+    :param cmds: The command to be run on the pod
+    :type cmd: list str
+    :param secrets: Secrets to be launched to the pod
+    :type secrets: list Secret
+    :param result: The result that will be returned to the operator after
+                   successful execution of the pod
+    :type result: any
     """
     pod_timeout = 3600
 
@@ -46,7 +62,12 @@ class Pod:
             volume_mounts=None,
             namespace='default',
             result=None,
-            image_pull_policy="IfNotPresent"):
+            image_pull_policy="IfNotPresent",
+            image_pull_secrets=None,
+            init_containers=None,
+            service_account_name=None,
+            resources=None
+    ):
         self.image = image
         self.envs = envs or {}
         self.cmds = cmds
@@ -60,4 +81,7 @@ class Pod:
         self.node_selectors = node_selectors or []
         self.namespace = namespace
         self.image_pull_policy = image_pull_policy
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.image_pull_secrets = image_pull_secrets
+        self.init_containers = init_containers
+        self.service_account_name = service_account_name
+        self.resources = resources or Resources()

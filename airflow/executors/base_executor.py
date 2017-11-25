@@ -49,7 +49,7 @@ class BaseExecutor(LoggingMixin):
             self.log.info("Adding to queue: %s", command)
             self.queued_tasks[key] = (command, priority, queue, task_instance)
         else:
-            self.logger.info("could not queue task {}".format(key))
+            self.log.info("could not queue task {}".format(key))
 
     def queue_task_instance(
             self,
@@ -121,7 +121,7 @@ class BaseExecutor(LoggingMixin):
             ti.refresh_from_db()
             if ti.state != State.RUNNING:
                 self.running[key] = command
-                self.execute_async(key, command=command, queue=queue)
+                self.execute_async(key, command=command, queue=queue, executor_config=ti.executor_config)
             else:
                 self.log.debug(
                     'Task is already running, not sending to executor: %s',
@@ -150,7 +150,7 @@ class BaseExecutor(LoggingMixin):
         self.event_buffer = {}
         return d
 
-    def execute_async(self, key, command, queue=None):  # pragma: no cover
+    def execute_async(self, key, command, queue=None, executor_config=None):  # pragma: no cover
         """
         This method will execute the command asynchronously.
         """

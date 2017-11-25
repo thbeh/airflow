@@ -181,7 +181,7 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
             self.pending_queue.put((pod_id, True, labels, resource_version))
-            # self.watcher_queue.put((pod_id, State.LAUNCHED, labels, resource_version))
+            self.watcher_queue.put((pod_id, State.LAUNCHED, labels, resource_version))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
             self.pending_queue.put((pod_id, False, labels, resource_version))
@@ -255,6 +255,7 @@ class AirflowKubernetesScheduler(object):
             airflow_command=command
         )
         # the watcher will monitor pods, so we do not block.
+        self.logger.info("launching pod {}".format(pod))
         self.launcher.run_pod_async(pod)
         self.logger.info("k8s: Job created!")
 
@@ -452,7 +453,9 @@ class KubernetesExecutor(BaseExecutor):
             execution_date=ex_time
         ).one()
 
-        if item.state == State.RUNNING or item.state == State.QUEUED:
+        if item.state == State.RUNNING or \
+                item.state == State.QUEUED or\
+                item.state == State.LAUNCHED:
             item.state = state
             self._session.add(item)
             self._session.commit()

@@ -29,7 +29,7 @@ class State(object):
     SCHEDULED = "scheduled"
 
     # set by the executor (t.b.d.)
-    # LAUNCHED = "launched"
+    LAUNCHED = "launched"
 
     # set by a task
     QUEUED = "queued"

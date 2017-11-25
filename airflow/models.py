@@ -4730,7 +4730,7 @@ class Pool(Base):
             session
             .query(TaskInstance)
             .filter(TaskInstance.pool == self.pool)
-            .filter(TaskInstance.state == State.QUEUED)
+            .filter(TaskInstance.state == State.QUEUED or TaskInstance.state == State.LAUNCHED)
             .count()
         )
 

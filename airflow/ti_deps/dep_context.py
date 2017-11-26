@@ -80,7 +80,7 @@ QUEUEABLE_STATES = {
     State.FAILED,
     State.NONE,
     State.QUEUED,
-    # State.LAUNCHED,
+    State.LAUNCHED,
     State.SCHEDULED,
     State.SKIPPED,
     State.UPSTREAM_FAILED,

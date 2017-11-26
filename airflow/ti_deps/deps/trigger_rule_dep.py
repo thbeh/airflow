@@ -17,6 +17,7 @@ import airflow
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
+import logging
 
 
 class TriggerRuleDep(BaseTIDep):
@@ -134,6 +135,7 @@ class TriggerRuleDep(BaseTIDep):
         if flag_upstream_failed:
             if tr == TR.ALL_SUCCESS:
                 if upstream_failed or failed:
+                    logging.info("Found a failure! triggering upstream failed {}".format(upstream_tasks_state))
                     ti.set_state(State.UPSTREAM_FAILED, session)
                 elif skipped:
                     ti.set_state(State.SKIPPED, session)

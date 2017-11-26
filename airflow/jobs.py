@@ -183,6 +183,7 @@ class BaseJob(Base, LoggingMixin):
         self.log.debug('[heart] Boom.')
 
     def run(self):
+        self.logger.info("running task now!")
         Stats.incr(self.__class__.__name__.lower() + '_start', 1, 1)
         # Adding an entry in the DB
         session = settings.Session()
@@ -195,6 +196,7 @@ class BaseJob(Base, LoggingMixin):
 
         # Run
         self._execute()
+        self.logger.info("finished tasks!")
 
         # Marking the success in the DB
         self.end_date = datetime.utcnow()
@@ -202,7 +204,6 @@ class BaseJob(Base, LoggingMixin):
         session.merge(self)
         session.commit()
         session.close()
-
         Stats.incr(self.__class__.__name__.lower() + '_end', 1, 1)
 
     def _execute(self):
@@ -1999,7 +2000,7 @@ class BackfillJob(BaseJob):
             self.log.debug("Executor state: %s task %s", state, ti)
 
             if state == State.FAILED or state == State.SUCCESS:
-                if ti.state == State.RUNNING or ti.state == State.QUEUED:
+                if ti.state == State.RUNNING or ti.state == State.QUEUED or ti.s:
                     msg = ("Executor reports task instance {} finished ({}) "
                            "although the task says its {}. Was the task "
                            "killed externally?".format(ti, state, ti.state))

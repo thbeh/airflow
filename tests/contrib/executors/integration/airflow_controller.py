@@ -15,6 +15,7 @@
 
 import subprocess
 import time
+from kubernetes import client, config
 
 
 class RunCommandError(Exception):
@@ -39,6 +40,8 @@ def run_command(command):
             command, stdout, stderr
         ))
     return stdout, stderr
+
+
 
 
 def run_command_in_pod(pod_name, container_name, command):
@@ -111,6 +114,29 @@ def get_dag_run_state(dag_id, run_id, postgres_pod=None):
     )
     return _parse_state(stdout)
 
+def get_dag_run_date(dag_id, run_id, postgres_pod=None):
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select execution_date from dag_run where dag_id='{dag_id}' and run_id='{run_id}'" """.format(
+            dag_id=dag_id, run_id=run_id
+        )
+    )
+    return _parse_state(stdout)
+
+
+def get_task_run_state(dag_id, run_id, task_id, postgres_pod=None):
+    postgres_pod = postgres_pod or _get_postgres_pod()
+    ex_date = get_dag_run_date(dag_id, run_id, postgres_pod)
+
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select state from task_instance where dag_id='{dag_id}' and task_id='{task_id}' and execution_date='{execution_date}'" """.format(
+            dag_id=dag_id, task_id=task_id, execution_date=ex_date
+        )
+    )
+    return _parse_state(stdout)
+
+
 def get_all_containers(postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
     stdout, stderr = run_command_in_pod(
@@ -119,24 +145,13 @@ def get_all_containers(postgres_pod=None):
     )
     print(stdout)
 
-def get_num_pending_containers(postgres_pod=None):
-    postgres_pod = postgres_pod or _get_postgres_pod()
+def get_num_pending_containers():
+    config.load_kube_config()
+    kube_client = client.CoreV1Api()
+    pods = kube_client.list_namespaced_pod(namespace='default', label_selector='airflow-slave').items
+    pending_pods = [x for x in pods if x.status.phase == 'Pending']
+    return len(pending_pods)
 
-    stdout, stderr = run_command_in_pod(
-        postgres_pod, "postgres",
-        """psql airflow -c "select task_id, state from task_instance where 
-        state='launched'" """
-    )
-    print("all")
-    print(stdout)
-
-
-    stdout, stderr = run_command_in_pod(
-        postgres_pod, "postgres",
-        """psql airflow -c "select COUNT(*) from task_instance where state='launched'" """
-    )
-    print(stdout)
-    return int(stdout.split("\n")[2])
 
 def dag_final_state(dag_id, run_id, postgres_pod=None, poll_interval=1, timeout=120):
     postgres_pod = postgres_pod or _get_postgres_pod()

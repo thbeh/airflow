@@ -185,20 +185,21 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         self.pending_queue = pending_queue
         self.resource_version = resource_version
 
+
     def run(self):
         kube_client = get_kube_client()
         while True:
             try:
                 self.resource_version = self._run(kube_client, self.resource_version)
             except Exception:
-                self.log.exception("Unknown error in KubernetesJobWatcher. Failing")
+                self.logger.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
             else:
-                self.log.warn("Watch died gracefully, starting back up with: "
+                self.logger.warn("Watch died gracefully, starting back up with: "
                               "last resource_version: {}".format(self.resource_version))
 
     def _run(self, kube_client, resource_version):
-        self.log.info(
+        self.logger.info(
             "Event: and now my watch begins starting at resource_version: {}"
             .format(resource_version))
         watcher = watch.Watch()
@@ -210,7 +211,7 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         last_resource_version = None
         for event in watcher.stream(kube_client.list_namespaced_pod, self.namespace, **kwargs):
             task = event['object']
-            self.log.info(
+            self.logger.info(
                 "Event: {} had an event of type {}".format(task.metadata.name, event['type']))
             self.process_status(
                 task.metadata.name, task.status.phase, task.metadata.labels,
@@ -224,19 +225,18 @@ class KubernetesJobWatcher(multiprocessing.Process, object):
         if status == 'Pending':
             self.logger.info("Event: {} Pending".format(pod_id))
             self.pending_queue.put((pod_id, True, labels, resource_version))
-            self.watcher_queue.put((pod_id, State.LAUNCHED, labels, resource_version))
         elif status == 'Failed':
             self.logger.info("Event: {} Failed".format(pod_id))
             self.pending_queue.put((pod_id, False, labels, resource_version))
             self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
-            self.log.info("Event: {} Succeeded".format(pod_id))
+            self.logger.info("Event: {} returned successfully".format(pod_id))
             self.watcher_queue.put((pod_id, None, labels, resource_version))
         elif status == 'Running':
             self.pending_queue.put((pod_id, False, labels, resource_version))
             self.logger.info("Event: {} is Running".format(pod_id))
         else:
-            self.log.warn("Event: Invalid state: {} on pod: {} with labels: {} "
+            self.logger.warn("Event: Invalid state: {} on pod: {} with labels: {} "
                           "with resource_version: {}"
                           .format(status, pod_id, labels, resource_version))
 
@@ -332,6 +332,7 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
             "Attempting to finish pod; pod_id: {}; state: {}; labels: {}"
             .format(pod_id, state, labels))
         key = self._labels_to_key(labels)
+        self.logger.info("key is {}".format(key))
         if key:
             self.log.debug("finishing job {} - {} ({})".format(key, state, pod_id))
             self.result_queue.put((key, state, pod_id, resource_version))
@@ -410,7 +411,6 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
         :return: ISO-like string representing the datetime
         """
         return datetime_obj.isoformat().replace(":", "_")
-
     def _labels_to_key(self, labels):
         try:
             return (
@@ -528,7 +528,7 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
             results = self.result_queue.get()
             key, state, pod_id, resource_version = results
             last_resource_version = resource_version
-            self.log.info("Changing state of {}".format(results))
+            self.log.info("Changing state of {} to {}".format(key, state))
             self._change_state(key, state, pod_id)
 
         KubeResourceVersion.checkpoint_resource_version(
@@ -538,8 +538,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
             key, command, kube_executor_config = self.task_queue.get()
             self.kube_scheduler.run_next((key, command, kube_executor_config))
     def _change_state(self, key, state, pod_id):
-        if state != State.RUNNING:
-            self.kube_scheduler.delete_pod(pod_id)
+        if state != State.RUNNING and state != State.LAUNCHED:
+            # self.kube_scheduler.delete_pod(pod_id)
             try:
                 self.running.pop(key)
             except KeyError:

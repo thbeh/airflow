@@ -15,11 +15,12 @@
 import unittest
 import time
 from uuid import uuid4
+from airflow.utils.state import State
 from tests.contrib.executors.integration.airflow_controller import (
     run_command, RunCommandError,
     run_dag, get_dag_run_state, dag_final_state, DagRunState,
     kill_scheduler, taint_minikube_cluster, untaint_minikube_cluster,
-    get_num_pending_containers, get_all_containers
+    get_num_pending_containers, get_all_containers, get_task_run_state
 )
 
 
@@ -78,25 +79,24 @@ class KubernetesExecutorTest(unittest.TestCase):
         print("tainting cluster")
 
         run_dag(dag_id, run_id)
-        time.sleep(2)
+        time.sleep(5)
+        while get_task_run_state(dag_id,run_id, task_id='print_the_context') != State.RUNNING:
+            time.sleep(1)
         taint_minikube_cluster()
-        i = 0
-        while get_num_pending_containers() < 5 and i < 15:
-            print("loop")
+        while get_task_run_state(dag_id,run_id, task_id='print_the_context') != State.SUCCESS:
             time.sleep(1)
-            i += 1
-        self.assertEquals(get_num_pending_containers(), 5)
-
-        print("untaint cluster")
+        time.sleep(15)
+        num_pending_containers = get_num_pending_containers()
+        print("num pending: {}".format(num_pending_containers))
+        dag_id2, run_id2 = "example_kubernetes_executor", uuid4().hex
+        run_dag(dag_id2, run_id2)
+        time.sleep(10)
+        num_pending_containers2 = get_num_pending_containers()
+        self.assertEqual(num_pending_containers, num_pending_containers2)
         untaint_minikube_cluster()
-        i = 0
-        while get_num_pending_containers() > 0:
-            self.assertLess(i, 100, "there was an infinite loop caused by this test")
-            print("loop")
-            time.sleep(1)
-            i += 1
+        self.assertEquals(dag_final_state(dag_id, run_id, timeout=180), DagRunState.SUCCESS)
+        self.assertEquals(dag_final_state(dag_id2, run_id2, timeout=180), DagRunState.SUCCESS)
 
-        self.assertEquals(get_num_pending_containers(), 0)
 
 if __name__ == "__main__":
     pass

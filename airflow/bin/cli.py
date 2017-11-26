@@ -58,6 +58,7 @@ from airflow.www.app import cached_app
 
 from sqlalchemy import func
 from sqlalchemy.orm import exc
+from airflow.utils.state import State
 
 api.load_auth()
 api_module = import_module(conf.get('cli', 'api_client'))
@@ -358,9 +359,10 @@ def run(args, dag=None):
         dag = dag_pickle.pickle
 
     task = dag.get_task(task_id=args.task_id)
+    log.info("getting tasks for kube")
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
-
+    log.info("got task!")
     log = logging.getLogger('airflow.task')
     if args.raw:
         log = logging.getLogger('airflow.task.raw')
@@ -1127,7 +1129,8 @@ class CLIFactory(object):
             ("--stdout",), "Redirect stdout to this file"),
         'log_file': Arg(
             ("-l", "--log-file"), "Location of the log file"),
-
+        'kubernetes_mode': Arg(
+            ('-km','--kube-mode'), "only if you are a kubernetes worker pod"),
         # backfill
         'mark_success': Arg(
             ("-m", "--mark_success"),

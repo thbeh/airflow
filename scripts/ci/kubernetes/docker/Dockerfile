@@ -39,6 +39,8 @@ RUN pip install kubernetes && \
     pip install psycopg2==2.7.3.1  # I had issues with older versions of psycopg2, just a warning
 
 # install airflow
+COPY ./requirements2.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 COPY airflow.tar.gz /tmp/airflow.tar.gz
 RUN pip install /tmp/airflow.tar.gz
 

@@ -87,8 +87,10 @@ class KubernetesExecutorTest(unittest.TestCase):
             time.sleep(1)
         time.sleep(15)
         num_pending_containers = get_num_pending_containers()
-        print("num pending: {}".format(num_pending_containers))
+        self.assertEqual(num_pending_containers, 5)
+
         dag_id2, run_id2 = "example_kubernetes_executor", uuid4().hex
+
         run_dag(dag_id2, run_id2)
         time.sleep(10)
         num_pending_containers2 = get_num_pending_containers()

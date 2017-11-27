@@ -13,10 +13,8 @@
 # limitations under the License.
 
 import base64
-import os
 import multiprocessing
 import logging
-import six
 from queue import Queue
 from dateutil import parser
 from uuid import uuid4
@@ -32,7 +30,6 @@ from airflow.models import TaskInstance, KubeResourceVersion
 from airflow.utils.state import State
 from airflow import configuration, settings
 from airflow.exceptions import AirflowConfigException
-from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 
@@ -78,6 +75,11 @@ class KubernetesExecutorConfig:
             "limit_cpu": self.limit_cpu
         }
 
+
+def _get_key_from_pod(pod):
+    labels = pod.metadata.labels
+    key = (labels['dag_id'],labels['task_id'],labels['execution_date'])
+    return key
 
 class KubeConfig:
     core_section = "core"
@@ -248,7 +250,7 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.namespace = self.kube_config.kube_namespace
-        self.pending_tasks = set()
+        self.pending_tasks = self._repopulate_pending_tasks()
         self.logger.info("k8s: using namespace {}".format(self.namespace))
         self.kube_client = kube_client
         self.launcher = PodLauncher(kube_client=self.kube_client)
@@ -258,12 +260,19 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
         self._session = session
         self.kube_watcher = self._make_kube_watcher()
 
-    def _check_for_pending_tasks(self):
-        kube_client = get_kube_client()
-        kwargs = {"label_selector": "airflow-slave"}
-        current_pods = kube_client.list_namespaced_pod(self.namespace, **kwargs)
-        pending_pods = [pod.name for pod in current_pods if pod.status.phase == 'Pending']
-        self.pending_tasks = set(pending_pods)
+    #TODO what if the pod switches to running while this function is running?
+    def _repopulate_pending_tasks(self):
+        pending_containers = self._get_pending_containers()
+        pending_keys = [_get_key_from_pod(pod) for pod in pending_containers]
+        return pending_keys
+
+    def _get_pending_containers(self):
+        pods = self.kube_client.list_namespaced_pod(
+            namespace=self.namespace,
+            label_selector='airflow-slave').items
+
+        pending_pods = [x for x in pods if x.status.phase == 'Pending']
+        return pending_pods
 
     def _make_kube_watcher(self):
         resource_version = KubeResourceVersion.get_current_resource_version(self._session)

@@ -43,6 +43,9 @@ class DataprocClusterCreateOperator(BaseOperator):
                  project_id,
                  num_workers,
                  zone,
+                 network_uri=None,
+                 subnetwork_uri=None,
+                 tags=None,
                  storage_bucket=None,
                  init_actions_uris=None,
                  metadata=None,
@@ -105,6 +108,14 @@ class DataprocClusterCreateOperator(BaseOperator):
         :type labels: dict
         :param zone: The zone where the cluster will be located
         :type zone: string
+        :param network_uri: The network uri to be used for machine communication, cannot be
+            specified with subnetwork_uri
+        :type network_uri: string
+        :param subnetwork_uri: The subnetwork uri to be used for machine communication, cannot be
+            specified with network_uri
+        :type subnetwork_uri: string
+        :param tags: The GCE tags to add to all instances
+        :type tags: list[string]
         :param region: leave as 'global', might become relevant in the future
         :param gcp_conn_id: The connection ID to use connecting to Google Cloud Platform.
         :type gcp_conn_id: string
@@ -135,6 +146,9 @@ class DataprocClusterCreateOperator(BaseOperator):
         self.worker_disk_size = worker_disk_size
         self.labels = labels
         self.zone = zone
+        self.network_uri = network_uri
+        self.subnetwork_uri = subnetwork_uri
+        self.tags = tags
         self.region = region
         self.service_account = service_account
         self.service_account_scopes = service_account_scopes
@@ -241,11 +255,17 @@ class DataprocClusterCreateOperator(BaseOperator):
         # [a-z]([-a-z0-9]*[a-z0-9])? (current airflow version string follows
         # semantic versioning spec: x.y.z).
         cluster_data['labels'].update({'airflow-version':
-                                       'v' + version.replace('.', '-')})
+                                       'v' + version.replace('.', '-').replace('+','-')})
         if self.storage_bucket:
             cluster_data['config']['configBucket'] = self.storage_bucket
         if self.metadata:
             cluster_data['config']['gceClusterConfig']['metadata'] = self.metadata
+        if self.network_uri:
+            cluster_data['config']['gceClusterConfig']['networkUri'] = self.network_uri
+        if self.subnetwork_uri:
+            cluster_data['config']['gceClusterConfig']['subnetworkUri'] = self.subnetwork_uri
+        if self.tags:
+            cluster_data['config']['gceClusterConfig']['tags'] = self.tags
         if self.image_version:
             cluster_data['config']['softwareConfig']['imageVersion'] = self.image_version
         if self.properties:
@@ -421,6 +441,7 @@ class DataProcPigOperator(BaseOperator):
             dataproc_pig_jars=None,
             gcp_conn_id='google_cloud_default',
             delegate_to=None,
+            region='global',
             *args,
             **kwargs):
         """
@@ -454,6 +475,8 @@ class DataProcPigOperator(BaseOperator):
             For this to work, the service account making the request must have domain-wide
             delegation enabled.
         :type delegate_to: string
+        :param region: The specified region where the dataproc cluster is created.
+        :type region: string
         """
         super(DataProcPigOperator, self).__init__(*args, **kwargs)
         self.gcp_conn_id = gcp_conn_id
@@ -465,6 +488,7 @@ class DataProcPigOperator(BaseOperator):
         self.cluster_name = cluster_name
         self.dataproc_properties = dataproc_pig_properties
         self.dataproc_jars = dataproc_pig_jars
+        self.region = region
 
     def execute(self, context):
         hook = DataProcHook(gcp_conn_id=self.gcp_conn_id,
@@ -480,7 +504,7 @@ class DataProcPigOperator(BaseOperator):
         job.add_jar_file_uris(self.dataproc_jars)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build())
+        hook.submit(hook.project_id, job.build(), self.region)
 
 
 class DataProcHiveOperator(BaseOperator):
@@ -586,6 +610,7 @@ class DataProcSparkSqlOperator(BaseOperator):
             dataproc_spark_jars=None,
             gcp_conn_id='google_cloud_default',
             delegate_to=None,
+            region='global',
             *args,
             **kwargs):
         """
@@ -615,6 +640,8 @@ class DataProcSparkSqlOperator(BaseOperator):
             For this to work, the service account making the request must have domain-wide
             delegation enabled.
         :type delegate_to: string
+        :param region: The specified region where the dataproc cluster is created.
+        :type region: string
         """
         super(DataProcSparkSqlOperator, self).__init__(*args, **kwargs)
         self.gcp_conn_id = gcp_conn_id
@@ -626,6 +653,7 @@ class DataProcSparkSqlOperator(BaseOperator):
         self.cluster_name = cluster_name
         self.dataproc_properties = dataproc_spark_properties
         self.dataproc_jars = dataproc_spark_jars
+        self.region = region
 
     def execute(self, context):
         hook = DataProcHook(gcp_conn_id=self.gcp_conn_id,
@@ -642,7 +670,7 @@ class DataProcSparkSqlOperator(BaseOperator):
         job.add_jar_file_uris(self.dataproc_jars)
         job.set_job_name(self.job_name)
 
-        hook.submit(hook.project_id, job.build())
+        hook.submit(hook.project_id, job.build(), self.region)
 
 
 class DataProcSparkOperator(BaseOperator):

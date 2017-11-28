@@ -14,15 +14,17 @@
 #
 
 import unittest
-import datetime
 import sys
 
 from airflow import DAG, configuration
 from airflow.models import TaskInstance
 
 from airflow.contrib.operators.spark_submit_operator import SparkSubmitOperator
+from airflow.utils import timezone
 
-DEFAULT_DATE = datetime.datetime(2017, 1, 1)
+from datetime import timedelta
+
+DEFAULT_DATE = timezone.datetime(2017, 1, 1)
 
 
 class TestSparkSubmitOperator(unittest.TestCase):
@@ -33,8 +35,11 @@ class TestSparkSubmitOperator(unittest.TestCase):
         },
         'files': 'hive-site.xml',
         'py_files': 'sample_library.py',
+        'driver_classpath': 'parquet.jar',
         'jars': 'parquet.jar',
         'packages': 'com.databricks:spark-avro_2.11:3.2.0',
+        'exclude_packages': 'org.bad.dependency:1.0.0',
+        'repositories': 'http://myrepo.org',
         'total_executor_cores':4,
         'executor_cores': 4,
         'executor_memory': '22g',
@@ -84,8 +89,11 @@ class TestSparkSubmitOperator(unittest.TestCase):
             },
             'files': 'hive-site.xml',
             'py_files': 'sample_library.py',
+            'driver_classpath': 'parquet.jar',
             'jars': 'parquet.jar',
             'packages': 'com.databricks:spark-avro_2.11:3.2.0',
+            'exclude_packages': 'org.bad.dependency:1.0.0',
+            'repositories': 'http://myrepo.org',
             'total_executor_cores': 4,
             'executor_cores': 4,
             'executor_memory': '22g',
@@ -112,8 +120,11 @@ class TestSparkSubmitOperator(unittest.TestCase):
         self.assertEqual(expected_dict['conf'], operator._conf)
         self.assertEqual(expected_dict['files'], operator._files)
         self.assertEqual(expected_dict['py_files'], operator._py_files)
+        self.assertEqual(expected_dict['driver_classpath'], operator._driver_classpath)
         self.assertEqual(expected_dict['jars'], operator._jars)
         self.assertEqual(expected_dict['packages'], operator._packages)
+        self.assertEqual(expected_dict['exclude_packages'], operator._exclude_packages)
+        self.assertEqual(expected_dict['repositories'], operator._repositories)
         self.assertEqual(expected_dict['total_executor_cores'], operator._total_executor_cores)
         self.assertEqual(expected_dict['executor_cores'], operator._executor_cores)
         self.assertEqual(expected_dict['executor_memory'], operator._executor_memory)
@@ -137,13 +148,14 @@ class TestSparkSubmitOperator(unittest.TestCase):
         # Then
         expected_application_args = [u'-f', 'foo',
                                      u'--bar', 'bar',
-                                     u'--start', (DEFAULT_DATE - datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
+                                     u'--start', (DEFAULT_DATE - timedelta(days=1)).strftime("%Y-%m-%d"),
                                      u'--end', DEFAULT_DATE.strftime("%Y-%m-%d"),
                                      u'--with-spaces', u'args should keep embdedded spaces',
                                      ]
         expected_name = "spark_submit_job"
         self.assertListEqual(expected_application_args, getattr(operator, '_application_args'))
         self.assertEqual(expected_name, getattr(operator, '_name'))
+
 
 if __name__ == '__main__':
     unittest.main()

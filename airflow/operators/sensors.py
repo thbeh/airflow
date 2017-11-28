@@ -21,7 +21,7 @@ standard_library.install_aliases()
 from builtins import str
 from past.builtins import basestring
 
-from datetime import datetime
+from airflow.utils import timezone
 from urllib.parse import urlparse
 from time import sleep
 import re
@@ -34,6 +34,7 @@ from airflow.hooks.base_hook import BaseHook
 from airflow.hooks.hdfs_hook import HDFSHook
 from airflow.hooks.http_hook import HttpHook
 from airflow.utils.state import State
+from airflow.utils.db import provide_session
 from airflow.utils.decorators import apply_defaults
 
 
@@ -74,9 +75,9 @@ class BaseSensorOperator(BaseOperator):
         raise AirflowException('Override me.')
 
     def execute(self, context):
-        started_at = datetime.utcnow()
+        started_at = timezone.utcnow()
         while not self.poke(context):
-            if (datetime.utcnow() - started_at).total_seconds() > self.timeout:
+            if (timezone.utcnow() - started_at).total_seconds() > self.timeout:
                 if self.soft_fail:
                     raise AirflowSkipException('Snap. Time is OUT.')
                 else:
@@ -224,7 +225,8 @@ class ExternalTaskSensor(BaseSensorOperator):
         self.external_dag_id = external_dag_id
         self.external_task_id = external_task_id
 
-    def poke(self, context):
+    @provide_session
+    def poke(self, context, session=None):
         if self.execution_delta:
             dttm = context['execution_date'] - self.execution_delta
         elif self.execution_date_fn:
@@ -243,7 +245,6 @@ class ExternalTaskSensor(BaseSensorOperator):
             '{} ... '.format(serialized_dttm_filter, **locals()))
         TI = TaskInstance
 
-        session = settings.Session()
         count = session.query(TI).filter(
             TI.dag_id == self.external_dag_id,
             TI.task_id == self.external_task_id,
@@ -251,7 +252,6 @@ class ExternalTaskSensor(BaseSensorOperator):
             TI.execution_date.in_(dttm_filter),
         ).count()
         session.commit()
-        session.close()
         return count == len(dttm_filter)
 
 
@@ -501,8 +501,8 @@ class S3KeySensor(BaseSensorOperator):
     :param wildcard_match: whether the bucket_key should be interpreted as a
         Unix wildcard pattern
     :type wildcard_match: bool
-    :param s3_conn_id: a reference to the s3 connection
-    :type s3_conn_id: str
+    :param aws_conn_id: a reference to the s3 connection
+    :type aws_conn_id: str
     """
     template_fields = ('bucket_key', 'bucket_name')
 
@@ -511,7 +511,7 @@ class S3KeySensor(BaseSensorOperator):
             self, bucket_key,
             bucket_name=None,
             wildcard_match=False,
-            s3_conn_id='s3_default',
+            aws_conn_id='aws_default',
             *args, **kwargs):
         super(S3KeySensor, self).__init__(*args, **kwargs)
         # Parse
@@ -528,11 +528,11 @@ class S3KeySensor(BaseSensorOperator):
         self.bucket_name = bucket_name
         self.bucket_key = bucket_key
         self.wildcard_match = wildcard_match
-        self.s3_conn_id = s3_conn_id
+        self.aws_conn_id = aws_conn_id
 
     def poke(self, context):
         from airflow.hooks.S3_hook import S3Hook
-        hook = S3Hook(s3_conn_id=self.s3_conn_id)
+        hook = S3Hook(aws_conn_id=self.aws_conn_id)
         full_url = "s3://" + self.bucket_name + "/" + self.bucket_key
         self.log.info('Poking for key : {full_url}'.format(**locals()))
         if self.wildcard_match:
@@ -565,7 +565,7 @@ class S3PrefixSensor(BaseSensorOperator):
     def __init__(
             self, bucket_name,
             prefix, delimiter='/',
-            s3_conn_id='s3_default',
+            aws_conn_id='aws_default',
             *args, **kwargs):
         super(S3PrefixSensor, self).__init__(*args, **kwargs)
         # Parse
@@ -573,13 +573,13 @@ class S3PrefixSensor(BaseSensorOperator):
         self.prefix = prefix
         self.delimiter = delimiter
         self.full_url = "s3://" + bucket_name + '/' + prefix
-        self.s3_conn_id = s3_conn_id
+        self.aws_conn_id = aws_conn_id
 
     def poke(self, context):
         self.log.info('Poking for prefix : {self.prefix}\n'
-                     'in bucket s3://{self.bucket_name}'.format(**locals()))
+                      'in bucket s3://{self.bucket_name}'.format(**locals()))
         from airflow.hooks.S3_hook import S3Hook
-        hook = S3Hook(s3_conn_id=self.s3_conn_id)
+        hook = S3Hook(aws_conn_id=self.aws_conn_id)
         return hook.check_for_prefix(
             prefix=self.prefix,
             delimiter=self.delimiter,
@@ -602,7 +602,7 @@ class TimeSensor(BaseSensorOperator):
 
     def poke(self, context):
         self.log.info('Checking if the time (%s) has come', self.target_time)
-        return datetime.utcnow().time() > self.target_time
+        return timezone.utcnow().time() > self.target_time
 
 
 class TimeDeltaSensor(BaseSensorOperator):
@@ -627,7 +627,7 @@ class TimeDeltaSensor(BaseSensorOperator):
         target_dttm = dag.following_schedule(context['execution_date'])
         target_dttm += self.delta
         self.log.info('Checking if the time (%s) has come', target_dttm)
-        return datetime.utcnow() > target_dttm
+        return timezone.utcnow() > target_dttm
 
 
 class HttpSensor(BaseSensorOperator):

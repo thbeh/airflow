@@ -105,6 +105,7 @@ async = [
     'gevent>=0.13'
 ]
 azure = ['azure-storage>=0.34.0']
+sendgrid = ['sendgrid>=5.2.0']
 celery = [
     'celery>=4.0.0',
     'flower>=0.7.3'
@@ -143,7 +144,7 @@ hive = [
     'impyla>=0.13.3',
     'unicodecsv>=0.14.1'
 ]
-jdbc = ['jaydebeapi>=0.2.0']
+jdbc = ['jaydebeapi>=1.1.1']
 mssql = ['pymssql>=2.1.1', 'unicodecsv>=0.14.1']
 mysql = ['mysqlclient>=1.3.6']
 rabbitmq = ['librabbitmq>=1.6.1']
@@ -151,10 +152,7 @@ oracle = ['cx_Oracle>=5.1.2']
 postgres = ['psycopg2>=2.7.1']
 ssh = ['paramiko>=2.1.1']
 salesforce = ['simple-salesforce>=0.72']
-s3 = [
-    'boto>=2.36.0',
-    'filechunkio>=1.6',
-]
+s3 = ['boto3>=1.0.0']
 samba = ['pysmbclient>=0.1.3']
 slack = ['slackclient>=1.0.0']
 statsd = ['statsd>=3.0.1, <4.0']
@@ -183,11 +181,12 @@ devel = [
     'jira',
     'lxml>=3.3.4',
     'mock',
-    'moto',
+    'moto==1.1.19',
     'nose',
     'nose-ignore-docstring==0.2',
     'nose-timer',
     'parameterized',
+    'qds-sdk>=1.9.6',
     'rednose',
     'paramiko',
     'requests_mock'
@@ -224,11 +223,13 @@ def do_setup():
             'funcsigs==1.0.0',
             'future>=0.16.0, <0.17',
             'gitpython>=2.0.2',
-            'gunicorn>=19.3.0, <19.4.0',  # 19.4.? seemed to have issues
+            'gunicorn>=19.4.0, <20.0',
+            'iso8601>=0.1.12',
             'jinja2>=2.7.3, <2.9.0',
             'lxml>=3.6.0, <4.0',
             'markdown>=2.5.2, <3.0',
             'pandas>=0.17.1, <1.0.0',
+            'pendulum==1.3.2',
             'psutil>=4.2.0, <5.0.0',
             'pygments>=2.0.1, <3.0',
             'python-daemon>=2.1.1, <2.2',
@@ -237,9 +238,14 @@ def do_setup():
             'requests>=2.5.1, <3',
             'setproctitle>=1.1.8, <2',
             'sqlalchemy>=0.9.8',
+            'sqlalchemy-utc>=0.9.0',
             'tabulate>=0.7.5, <0.8.0',
             'thrift>=0.9.2',
+            'tzlocal>=1.4',
             'zope.deprecation>=4.0, <5.0',
+        ],
+        setup_requires=[
+            'docutils>=0.14, <1.0',
         ],
         extras_require={
             'all': devel_all,
@@ -275,6 +281,7 @@ def do_setup():
             's3': s3,
             'salesforce': salesforce,
             'samba': samba,
+            'sendgrid' : sendgrid,
             'slack': slack,
             'ssh': ssh,
             'statsd': statsd,

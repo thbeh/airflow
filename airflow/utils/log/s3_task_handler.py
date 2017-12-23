@@ -30,6 +30,7 @@ class S3TaskHandler(FileTaskHandler, LoggingMixin):
         self.log_relative_path = ''
         self._hook = None
         self.closed = False
+        self.upload_on_close = True
 
     def _build_hook(self):
         remote_conn_id = configuration.get('core', 'REMOTE_LOG_CONN_ID')
@@ -53,7 +54,8 @@ class S3TaskHandler(FileTaskHandler, LoggingMixin):
         super(S3TaskHandler, self).set_context(ti)
         # Local location and remote location is needed to open and
         # upload local log file to S3 remote storage.
-        self.log_relative_path = self._render_filename(ti, ti.try_number + 1)
+        self.log_relative_path = self._render_filename(ti, ti.try_number)
+        self.upload_on_close = not ti.is_raw
 
     def close(self):
         """
@@ -67,6 +69,9 @@ class S3TaskHandler(FileTaskHandler, LoggingMixin):
             return
 
         super(S3TaskHandler, self).close()
+
+        if not self.upload_on_close:
+            return
 
         local_loc = os.path.join(self.local_base, self.log_relative_path)
         remote_loc = os.path.join(self.remote_base, self.log_relative_path)
@@ -89,7 +94,7 @@ class S3TaskHandler(FileTaskHandler, LoggingMixin):
         # Explicitly getting log relative path is necessary as the given
         # task instance might be different than task instance passed in
         # in set_context method.
-        log_relative_path = self._render_filename(ti, try_number + 1)
+        log_relative_path = self._render_filename(ti, try_number)
         remote_loc = os.path.join(self.remote_base, log_relative_path)
 
         if self.s3_log_exists(remote_loc):

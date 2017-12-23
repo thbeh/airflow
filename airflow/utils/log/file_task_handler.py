@@ -89,7 +89,7 @@ class FileTaskHandler(logging.Handler):
         # Task instance here might be different from task instance when
         # initializing the handler. Thus explicitly getting log location
         # is needed to get correct log path.
-        log_relative_path = self._render_filename(ti, try_number + 1)
+        log_relative_path = self._render_filename(ti, try_number)
         location = os.path.join(self.local_base, log_relative_path)
 
         log = ""
@@ -97,9 +97,11 @@ class FileTaskHandler(logging.Handler):
         if os.path.exists(location):
             try:
                 with open(location) as f:
-                    log += "*** Reading local log.\n" + "".join(f.readlines())
+                    log += "*** Reading local file: {}\n".format(location)
+                    log += "".join(f.readlines())
             except Exception as e:
-                log = "*** Failed to load local log file: {}. {}\n".format(location, str(e))
+                log = "*** Failed to load local log file: {}\n".format(location)
+                log += "*** {}\n".format(str(e))
         else:
             url = os.path.join(
                 "http://{ti.hostname}:{worker_log_server_port}/log", log_relative_path
@@ -107,8 +109,8 @@ class FileTaskHandler(logging.Handler):
                 ti=ti,
                 worker_log_server_port=conf.get('celery', 'WORKER_LOG_SERVER_PORT')
             )
-            log += "*** Log file isn't local.\n"
-            log += "*** Fetching here: {url}\n".format(**locals())
+            log += "*** Log file does not exist: {}\n".format(location)
+            log += "*** Fetching from: {}\n".format(url)
             try:
                 timeout = None  # No timeout
                 try:
@@ -139,12 +141,14 @@ class FileTaskHandler(logging.Handler):
         # So the log for a particular task try will only show up when
         # try number gets incremented in DB, i.e logs produced the time
         # after cli run and before try_number + 1 in DB will not be displayed.
-        next_try = task_instance.try_number
 
         if try_number is None:
-            try_numbers = list(range(next_try))
-        elif try_number < 0:
-            logs = ['Error fetching the logs. Try number {} is invalid.'.format(try_number)]
+            next_try = task_instance.next_try_number
+            try_numbers = list(range(1, next_try))
+        elif try_number < 1:
+            logs = [
+                'Error fetching the logs. Try number {} is invalid.'.format(try_number),
+            ]
             return logs
         else:
             try_numbers = [try_number]
@@ -174,7 +178,7 @@ class FileTaskHandler(logging.Handler):
         # writable by both users, then it's possible that re-running a task
         # via the UI (or vice versa) results in a permission error as the task
         # tries to write to a log file created by the other user.
-        relative_path = self._render_filename(ti, ti.try_number + 1)
+        relative_path = self._render_filename(ti, ti.try_number)
         full_path = os.path.join(self.local_base, relative_path)
         directory = os.path.dirname(full_path)
         # Create the log file and give it group writable permissions

@@ -46,7 +46,7 @@ from airflow.exceptions import AirflowException
 from airflow.logging_config import configure_logging
 from airflow.models import DAG, DagRun
 from airflow.settings import Stats
-from airflow.task_runner import get_task_runner
+from airflow.task.task_runner import get_task_runner
 from airflow.ti_deps.dep_context import DepContext, QUEUE_DEPS, RUN_DEPS
 from airflow.utils import asciiart, timezone
 from airflow.utils.dag_processing import (AbstractDagFileProcessor,
@@ -54,10 +54,9 @@ from airflow.utils.dag_processing import (AbstractDagFileProcessor,
                                           SimpleDag,
                                           SimpleDagBag,
                                           list_py_file_paths)
-from airflow.utils.db import (
-    create_session, provide_session, pessimistic_connection_handling)
+from airflow.utils.db import create_session, provide_session
 from airflow.utils.email import send_email
-from airflow.utils.log.logging_mixin import LoggingMixin, StreamLogWriter
+from airflow.utils.log.logging_mixin import LoggingMixin, set_context, StreamLogWriter
 from airflow.utils.state import State
 
 Base = models.Base
@@ -120,8 +119,8 @@ class BaseJob(Base, LoggingMixin):
         job.end_date = timezone.utcnow()
         try:
             self.on_kill()
-        except:
-            self.log.error('on_kill() method failed')
+        except Exception as e:
+            self.log.error('on_kill() method failed: {}'.format(e))
         session.merge(job)
         session.commit()
         raise AirflowException("Job shut down externally.")
@@ -239,7 +238,6 @@ class BaseJob(Base, LoggingMixin):
                         TI.execution_date == DR.execution_date))
                 .filter(
                     DR.state == State.RUNNING,
-                    DR.external_trigger == False,
                     DR.run_id.notlike(BackfillJob.ID_PREFIX + '%'),
                     TI.state.in_(resettable_states))).all()
         else:
@@ -345,13 +343,7 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
             stdout = StreamLogWriter(log, logging.INFO)
             stderr = StreamLogWriter(log, logging.WARN)
 
-            for handler in log.handlers:
-                try:
-                    handler.set_context(file_path)
-                except AttributeError:
-                    # Not all handlers need to have context passed in so we ignore
-                    # the error when handlers do not have set_context defined.
-                    pass
+            set_context(log, file_path)
 
             try:
                 # redirect stdout/stderr to log
@@ -384,6 +376,9 @@ class DagFileProcessor(AbstractDagFileProcessor, LoggingMixin):
             finally:
                 sys.stdout = sys.__stdout__
                 sys.stderr = sys.__stderr__
+                # We re-initialized the ORM within this Process above so we need to
+                # tear it down manually here
+                settings.dispose_orm()
 
         p = multiprocessing.Process(target=helper,
                                     args=(),
@@ -1505,7 +1500,6 @@ class SchedulerJob(BaseJob):
 
     def _execute(self):
         self.log.info("Starting the scheduler")
-        pessimistic_connection_handling()
 
         # DAGs can be pickled for easier remote execution by some executors
         pickle_dags = False
@@ -1819,7 +1813,8 @@ class SchedulerJob(BaseJob):
             # Also save this task instance to the DB.
             self.log.info("Creating / updating %s in ORM", ti)
             session.merge(ti)
-            session.commit()
+        # commit batch
+        session.commit()
 
         # Record import errors into the ORM
         try:

@@ -72,23 +72,14 @@ def git_version(version):
         logger.warning('gitpython not found: Cannot compute the git version.')
         return ''
     except Exception as e:
-        logger.warning('Git repo not found: Cannot compute the git version.')
+        logger.warning('Cannot compute the git version. {}'.format(e))
         return ''
     if repo:
         sha = repo.head.commit.hexsha
         if repo.is_dirty():
             return '.dev0+{sha}.dirty'.format(sha=sha)
         # commit is clean
-        # is it release of `version` ?
-        try:
-            tag = repo.git.describe(
-                match='[0-9]*', exact_match=True,
-                tags=True, dirty=True)
-            assert tag == version, (tag, version)
-            return '.release:{version}+{sha}'.format(version=version,
-                                                     sha=sha)
-        except git.GitCommandError:
-            return '.dev0+{sha}'.format(sha=sha)
+        return '.release:{version}+{sha}'.format(version=version, sha=sha)
     else:
         return 'no_git_version'
 
@@ -210,7 +201,7 @@ def do_setup():
         scripts=['airflow/bin/airflow'],
         install_requires=[
             'alembic>=0.8.3, <0.9',
-            'bleach==2.0.0',
+            'bleach==2.1.2',
             'configparser>=3.5.0, <3.6.0',
             'croniter>=0.3.17, <0.4',
             'dill>=0.2.2, <0.3',
@@ -219,7 +210,7 @@ def do_setup():
             'flask-cache>=0.13.1, <0.14',
             'flask-login==0.2.11',
             'flask-swagger==0.2.13',
-            'flask-wtf==0.14',
+            'flask-wtf>=0.14, <0.15',
             'funcsigs==1.0.0',
             'future>=0.16.0, <0.17',
             'gitpython>=2.0.2',

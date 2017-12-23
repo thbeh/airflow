@@ -25,6 +25,9 @@ from airflow import configuration as conf
 from tempfile import mkstemp
 
 
+PYTHONPATH_VAR = 'PYTHONPATH'
+
+
 class BaseTaskRunner(LoggingMixin):
     """
     Runs Airflow task instances by invoking the `airflow run` command with raw
@@ -38,8 +41,8 @@ class BaseTaskRunner(LoggingMixin):
         :type local_task_job: airflow.jobs.LocalTaskJob
         """
         # Pass task instance context into log handlers to setup the logger.
+        super(BaseTaskRunner, self).__init__(local_task_job.task_instance)
         self._task_instance = local_task_job.task_instance
-        self.set_log_contexts(self._task_instance)
 
         popen_prepend = []
         cfg_path = None
@@ -66,16 +69,23 @@ class BaseTaskRunner(LoggingMixin):
 
             # Give ownership of file to user; only they can read and write
             subprocess.call(
-                ['sudo', 'chown', self.run_as_user, cfg_path]
+                ['sudo', 'chown', self.run_as_user, cfg_path],
+                close_fds=True
             )
             subprocess.call(
-                ['sudo', 'chmod', '600', cfg_path]
+                ['sudo', 'chmod', '600', cfg_path],
+                close_fds=True
             )
 
             with os.fdopen(temp_fd, 'w') as temp_file:
                 json.dump(cfg_subset, temp_file)
 
+            # propagate PYTHONPATH environment variable
+            pythonpath_value = os.environ.get(PYTHONPATH_VAR, '')
             popen_prepend = ['sudo', '-H', '-u', self.run_as_user]
+
+            if pythonpath_value:
+                popen_prepend.append('{}={}'.format(PYTHONPATH_VAR, pythonpath_value))
 
         self._cfg_path = cfg_path
         self._command = popen_prepend + self._task_instance.command_as_list(
@@ -95,7 +105,9 @@ class BaseTaskRunner(LoggingMixin):
                 line = line.decode('utf-8')
             if len(line) == 0:
                 break
-            self.log.info(u'Subtask: %s', line.rstrip('\n'))
+            self.log.info(u'Job {}: Subtask {} %s'.format(
+                self._task_instance.job_id, self._task_instance.task_id),
+                line.rstrip('\n'))
 
     def run_command(self, run_with, join_args=False):
         """
@@ -117,7 +129,8 @@ class BaseTaskRunner(LoggingMixin):
             full_cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            universal_newlines=True
+            universal_newlines=True,
+            close_fds=True,
         )
 
         # Start daemon thread to read subprocess logging output
@@ -154,4 +167,4 @@ class BaseTaskRunner(LoggingMixin):
         A callback that should be called when this is done running.
         """
         if self._cfg_path and os.path.isfile(self._cfg_path):
-            subprocess.call(['sudo', 'rm', self._cfg_path])
+            subprocess.call(['sudo', 'rm', self._cfg_path], close_fds=True)

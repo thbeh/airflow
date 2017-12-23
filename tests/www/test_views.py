@@ -326,9 +326,9 @@ class TestLogView(unittest.TestCase):
         configuration.load_test_config()
         logging_config = copy.deepcopy(DEFAULT_LOGGING_CONFIG)
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        logging_config['handlers']['file.task']['base_log_folder'] = os.path.normpath(
+        logging_config['handlers']['task']['base_log_folder'] = os.path.normpath(
             os.path.join(current_dir, 'test_logs'))
-        logging_config['handlers']['file.task']['filename_template'] = \
+        logging_config['handlers']['task']['filename_template'] = \
             '{{ ti.dag_id }}/{{ ti.task_id }}/{{ ts | replace(":", ".") }}/{{ try_number }}.log'
 
         # Write the custom logging configuration to a file
@@ -374,7 +374,7 @@ class TestLogView(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Log file isn',
+        self.assertIn('Log file does not exist',
                       response.data.decode('utf-8'))
 
 

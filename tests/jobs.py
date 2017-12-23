@@ -36,8 +36,9 @@ from airflow.jobs import BackfillJob, SchedulerJob, LocalTaskJob
 from airflow.models import DAG, DagModel, DagBag, DagRun, Pool, TaskInstance as TI
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.operators.bash_operator import BashOperator
-from airflow.task_runner.base_task_runner import BaseTaskRunner
+from airflow.task.task_runner.base_task_runner import BaseTaskRunner
 from airflow.utils import timezone
+
 from airflow.utils.dates import days_ago
 from airflow.utils.db import provide_session
 from airflow.utils.state import State
@@ -2405,10 +2406,11 @@ class SchedulerJobTest(unittest.TestCase):
         (command, priority, queue, ti) = ti_tuple
         ti.task = dag_task1
 
+        self.assertEqual(ti.try_number, 1)
         # fail execution
         run_with_error(ti)
         self.assertEqual(ti.state, State.UP_FOR_RETRY)
-        self.assertEqual(ti.try_number, 1)
+        self.assertEqual(ti.try_number, 2)
 
         ti.refresh_from_db(lock_for_update=True, session=session)
         ti.state = State.SCHEDULED
@@ -2827,7 +2829,8 @@ class SchedulerJobTest(unittest.TestCase):
         session.merge(dr1)
         session.commit()
 
-        self.assertEquals(0, len(scheduler.reset_state_for_orphaned_tasks(session=session)))
+        reset_tis = scheduler.reset_state_for_orphaned_tasks(session=session)
+        self.assertEquals(1, len(reset_tis))
 
     def test_reset_orphaned_tasks_backfill_dag(self):
         dag_id = 'test_reset_orphaned_tasks_backfill_dag'

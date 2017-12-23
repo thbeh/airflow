@@ -54,7 +54,8 @@ from airflow.models import (DagModel, DagBag, TaskInstance,
 
 from airflow.ti_deps.dep_context import (DepContext, SCHEDULER_DEPS)
 from airflow.utils import db as db_utils
-from airflow.utils.log.logging_mixin import LoggingMixin, redirect_stderr, redirect_stdout
+from airflow.utils.log.logging_mixin import (LoggingMixin, redirect_stderr,
+                                             redirect_stdout, set_context)
 from airflow.www.app import cached_app
 
 from sqlalchemy import func
@@ -328,7 +329,6 @@ def run(args, dag=None):
     # while it's waiting for the task to finish.
     settings.configure_orm(disable_connection_pool=True)
 
-    db_utils.pessimistic_connection_handling()
     if dag:
         args.dag_id = dag.dag_id
 
@@ -363,22 +363,12 @@ def run(args, dag=None):
     ti = TaskInstance(task, args.execution_date)
     ti.refresh_from_db()
 
-    log = logging.getLogger('airflow.task')
-    if args.raw:
-        log = logging.getLogger('airflow.task.raw')
-
-    for handler in log.handlers:
-        try:
-            handler.set_context(ti)
-        except AttributeError:
-            # Not all handlers need to have context passed in so we ignore
-            # the error when handlers do not have set_context defined.
-            pass
+    ti.init_run_context(raw=args.raw)
 
     hostname = socket.getfqdn()
-    log.info("Running on host %s", hostname)
+    log.info("Running %s on host %s", ti, hostname)
 
-    with redirect_stdout(log, logging.INFO), redirect_stderr(log, logging.WARN):
+    with redirect_stdout(ti.log, logging.INFO), redirect_stderr(ti.log, logging.WARN):
         if args.local:
             run_job = jobs.LocalTaskJob(
                 task_instance=ti,
@@ -430,17 +420,7 @@ def run(args, dag=None):
             executor.heartbeat()
             executor.end()
 
-    # Child processes should not flush or upload to remote
-    if args.raw:
-        return
-
-    # Force the log to flush. The flush is important because we
-    # might subsequently read from the log to insert into S3 or
-    # Google cloud storage. Explicitly close the handler is
-    # needed in order to upload to remote storage services.
-    for handler in log.handlers:
-        handler.flush()
-        handler.close()
+    logging.shutdown()
 
 
 def task_failed_deps(args):
@@ -567,6 +547,22 @@ def clear(args):
         include_subdags=not args.exclude_subdags)
 
 
+def get_num_ready_workers_running(gunicorn_master_proc):
+    workers = psutil.Process(gunicorn_master_proc.pid).children()
+
+    def ready_prefix_on_cmdline(proc):
+        try:
+            cmdline = proc.cmdline()
+            if len(cmdline) > 0:
+                return settings.GUNICORN_WORKER_READY_PREFIX in cmdline[0]
+        except psutil.NoSuchProcess:
+            pass
+        return False
+
+    ready_workers = [proc for proc in workers if ready_prefix_on_cmdline(proc)]
+    return len(ready_workers)
+
+
 def restart_workers(gunicorn_master_proc, num_workers_expected):
     """
     Runs forever, monitoring the child processes of @gunicorn_master_proc and
@@ -599,14 +595,6 @@ def restart_workers(gunicorn_master_proc, num_workers_expected):
     def get_num_workers_running(gunicorn_master_proc):
         workers = psutil.Process(gunicorn_master_proc.pid).children()
         return len(workers)
-
-    def get_num_ready_workers_running(gunicorn_master_proc):
-        workers = psutil.Process(gunicorn_master_proc.pid).children()
-        ready_workers = [
-            proc for proc in workers
-            if settings.GUNICORN_WORKER_READY_PREFIX in proc.cmdline()[0]
-        ]
-        return len(ready_workers)
 
     def start_refresh(gunicorn_master_proc):
         batch_size = conf.getint('webserver', 'worker_refresh_batch_size')
@@ -764,7 +752,7 @@ def webserver(args):
                 },
             )
             with ctx:
-                subprocess.Popen(run_args)
+                subprocess.Popen(run_args, close_fds=True)
 
                 # Reading pid file directly, since Popen#pid doesn't
                 # seem to return the right value with DaemonContext.
@@ -783,7 +771,7 @@ def webserver(args):
             stdout.close()
             stderr.close()
         else:
-            gunicorn_master_proc = subprocess.Popen(run_args)
+            gunicorn_master_proc = subprocess.Popen(run_args, close_fds=True)
 
             signal.signal(signal.SIGINT, kill_proc)
             signal.signal(signal.SIGTERM, kill_proc)
@@ -874,7 +862,7 @@ def worker(args):
             stderr=stderr,
         )
         with ctx:
-            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env)
+            sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
             worker.run(**options)
             sp.kill()
 
@@ -884,7 +872,7 @@ def worker(args):
         signal.signal(signal.SIGINT, sigint_handler)
         signal.signal(signal.SIGTERM, sigint_handler)
 
-        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env)
+        sp = subprocess.Popen(['airflow', 'serve_logs'], env=env, close_fds=True)
 
         worker.run(**options)
         sp.kill()
@@ -1396,7 +1384,7 @@ class CLIFactory(object):
             ("-c", "--concurrency"),
             type=int,
             help="The number of worker processes",
-            default=conf.get('celery', 'celeryd_concurrency')),
+            default=conf.get('celery', 'worker_concurrency')),
         'celery_hostname': Arg(
             ("-cn", "--celery_hostname"),
             help=("Set the hostname of celery worker "

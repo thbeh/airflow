@@ -108,7 +108,7 @@ def get_fernet():
         raise AirflowException('Failed to import Fernet, it may not be installed')
     try:
         return Fernet(configuration.get('core', 'FERNET_KEY').encode('utf-8'))
-    except ValueError as ve:
+    except (ValueError, TypeError) as ve:
         raise AirflowException("Could not create Fernet object: {}".format(ve))
 
 
@@ -137,13 +137,13 @@ def clear_task_instances(tis, session, activate_dag_runs=True, dag=None):
             if dag and dag.has_task(task_id):
                 task = dag.get_task(task_id)
                 task_retries = task.retries
-                ti.max_tries = ti.try_number + task_retries
+                ti.max_tries = ti.try_number + task_retries - 1
             else:
                 # Ignore errors when updating max_tries if dag is None or
                 # task not found in dag since database records could be
                 # outdated. We make max_tries the maximum value of its
                 # original max_tries or the current task try number.
-                ti.max_tries = max(ti.max_tries, ti.try_number)
+                ti.max_tries = max(ti.max_tries, ti.try_number - 1)
             ti.state = State.NONE
             session.merge(ti)
 
@@ -329,6 +329,8 @@ class DagBag(BaseDagBag, LoggingMixin):
                 if isinstance(dag, DAG):
                     if not dag.full_filepath:
                         dag.full_filepath = filepath
+                        if dag.fileloc != filepath:
+                            dag.fileloc = filepath
                     dag.is_subdag = False
                     self.bag_dag(dag, parent_dag=dag, root_dag=dag)
                     found_dags.append(dag)
@@ -771,7 +773,7 @@ class TaskInstance(Base, LoggingMixin):
     end_date = Column(UtcDateTime)
     duration = Column(Float)
     state = Column(String(20))
-    try_number = Column(Integer, default=0)
+    _try_number = Column('try_number', Integer, default=0)
     max_tries = Column(Integer)
     hostname = Column(String(1000))
     unixname = Column(String(1000))
@@ -809,11 +811,36 @@ class TaskInstance(Base, LoggingMixin):
         self.executor_config = task.executor_config
         self.init_on_load()
         self._log = logging.getLogger("airflow.task")
+        # Is this TaskInstance being currently running within `airflow run --raw`.
+        # Not persisted to the database so only valid for the current process
+        self.is_raw = False
 
     @reconstructor
     def init_on_load(self):
         """ Initialize the attributes that aren't stored in the DB. """
         self.test_mode = False  # can be changed when calling 'run'
+
+    @property
+    def try_number(self):
+        """
+        Return the try number that this task number will be when it is acutally
+        run.
+
+        If the TI is currently running, this will match the column in the
+        databse, in all othercases this will be incremenetd
+        """
+        # This is designed so that task logs end up in the right file.
+        if self.state == State.RUNNING:
+            return self._try_number
+        return self._try_number + 1
+
+    @try_number.setter
+    def try_number(self, value):
+        self._try_number = value
+
+    @property
+    def next_try_number(self):
+        return self._try_number + 1
 
     def command(
             self,
@@ -1043,7 +1070,9 @@ class TaskInstance(Base, LoggingMixin):
             self.state = ti.state
             self.start_date = ti.start_date
             self.end_date = ti.end_date
-            self.try_number = ti.try_number
+            # Get the raw value of try_number column, don't read through the
+            # accessor here otherwise it will be incremeneted by one already.
+            self.try_number = ti._try_number
             self.max_tries = ti.max_tries
             self.hostname = ti.hostname
             self.pid = ti.pid
@@ -1345,7 +1374,7 @@ class TaskInstance(Base, LoggingMixin):
         # not 0-indexed lists (i.e. Attempt 1 instead of
         # Attempt 0 for the first attempt).
         msg = "Starting attempt {attempt} of {total}".format(
-            attempt=self.try_number + 1,
+            attempt=self.try_number,
             total=self.max_tries + 1)
         self.start_date = timezone.utcnow()
 
@@ -1367,7 +1396,7 @@ class TaskInstance(Base, LoggingMixin):
             self.state = State.NONE
             msg = ("FIXME: Rescheduling due to concurrency limits reached at task "
                    "runtime. Attempt {attempt} of {total}. State set to NONE.").format(
-                attempt=self.try_number + 1,
+                attempt=self.try_number,
                 total=self.max_tries + 1)
             self.log.warning(hr + msg + hr)
 
@@ -1387,7 +1416,7 @@ class TaskInstance(Base, LoggingMixin):
 
         # print status message
         self.log.info(hr + msg + hr)
-        self.try_number += 1
+        self._try_number += 1
 
         if not test_mode:
             session.add(Log(State.RUNNING, self))
@@ -1589,10 +1618,10 @@ class TaskInstance(Base, LoggingMixin):
 
         # Let's go deeper
         try:
-            # try_number is incremented by 1 during task instance run. So the
-            # current task instance try_number is the try_number for the next
-            # task instance run. We only mark task instance as FAILED if the
-            # next task instance try_number exceeds the max_tries.
+            # Since this function is called only when the TI state is running,
+            # try_number contains the current try_number (not the next). We
+            # only mark task instance as FAILED if the next task instance
+            # try_number exceeds the max_tries.
             if task.retries and self.try_number <= self.max_tries:
                 self.state = State.UP_FOR_RETRY
                 self.log.info('Marking task as UP_FOR_RETRY')
@@ -1757,7 +1786,7 @@ class TaskInstance(Base, LoggingMixin):
             "Host: {self.hostname}<br>"
             "Log file: {self.log_filepath}<br>"
             "Mark success: <a href='{self.mark_success_url}'>Link</a><br>"
-        ).format(try_number=self.try_number + 1, max_tries=self.max_tries + 1, **locals())
+        ).format(try_number=self.try_number, max_tries=self.max_tries + 1, **locals())
         send_email(task.email, title, body)
 
     def set_duration(self):
@@ -1857,6 +1886,13 @@ class TaskInstance(Base, LoggingMixin):
             TI.task_id == self.task_id,
             TI.state == State.RUNNING
         ).count()
+
+    def init_run_context(self, raw=False):
+        """
+        Sets the log context.
+        """
+        self._set_context(self)
+        self.raw = raw
 
 
 class TaskFail(Base):
@@ -2211,6 +2247,8 @@ class BaseOperator(LoggingMixin):
         if dag:
             self.dag = dag
 
+        self._log = logging.getLogger("airflow.task.operators")
+
         self._comps = {
             'task_id',
             'dag_id',
@@ -2422,14 +2460,27 @@ class BaseOperator(LoggingMixin):
         memo[id(self)] = result
 
         for k, v in list(self.__dict__.items()):
-            if k not in ('user_defined_macros', 'user_defined_filters', 'params'):
+            if k not in ('user_defined_macros', 'user_defined_filters',
+                         'params', '_log'):
                 setattr(result, k, copy.deepcopy(v, memo))
         result.params = self.params
         if hasattr(self, 'user_defined_macros'):
             result.user_defined_macros = self.user_defined_macros
         if hasattr(self, 'user_defined_filters'):
             result.user_defined_filters = self.user_defined_filters
+        if hasattr(self, '_log'):
+            result._log = self._log
         return result
+
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        del state['_log']
+
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self._log = logging.getLogger("airflow.task.operators")
 
     def render_template_from_field(self, attr, content, context, jinja_env):
         """
@@ -4650,7 +4701,7 @@ class DagRun(Base, LoggingMixin):
             root_ids = [t.task_id for t in dag.roots]
             roots = [t for t in tis if t.task_id in root_ids]
 
-            # if all roots finished and at least on failed, the run failed
+            # if all roots finished and at least one failed, the run failed
             if (not unfinished_tasks and
                     any(r.state in (State.FAILED, State.UPSTREAM_FAILED) for r in roots)):
                 self.log.info('Marking run %s failed', self)

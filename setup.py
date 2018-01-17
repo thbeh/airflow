@@ -98,7 +98,7 @@ async = [
 azure = ['azure-storage>=0.34.0']
 sendgrid = ['sendgrid>=5.2.0']
 celery = [
-    'celery>=4.0.0',
+    'celery>=4.0.2',
     'flower>=0.7.3'
 ]
 cgroups = [
@@ -123,7 +123,7 @@ gcp_api = [
     'google-api-python-client>=1.5.0, <1.6.0',
     'oauth2client>=2.0.2, <2.1.0',
     'PyOpenSSL',
-    'google-cloud-dataflow',
+    'google-cloud-dataflow>=2.2.0',
     'pandas-gbq'
 ]
 hdfs = ['snakebite>=2.7.8']
@@ -184,7 +184,8 @@ devel = [
 ]
 devel_minreq = devel + mysql + doc + password + s3 + cgroups
 devel_hadoop = devel_minreq + hive + hdfs + webhdfs + kerberos
-devel_all = devel + all_dbs + doc + samba + s3 + slack + crypto + oracle + docker + ssh + kubernetes
+devel_all = (devel + all_dbs + doc + samba + s3 + slack + crypto + oracle + docker + ssh +
+             kubernetes)
 
 
 def do_setup():
@@ -207,7 +208,7 @@ def do_setup():
             'dill>=0.2.2, <0.3',
             'flask>=0.11, <0.12',
             'flask-admin==1.4.1',
-            'flask-cache>=0.13.1, <0.14',
+            'flask-caching>=1.3.3, <1.4.0',
             'flask-login==0.2.11',
             'flask-swagger==0.2.13',
             'flask-wtf>=0.14, <0.15',
@@ -228,7 +229,7 @@ def do_setup():
             'python-nvd3==0.14.2',
             'requests>=2.5.1, <3',
             'setproctitle>=1.1.8, <2',
-            'sqlalchemy>=0.9.8',
+            'sqlalchemy>=1.1.15, <1.2.0',
             'sqlalchemy-utc>=0.9.0',
             'tabulate>=0.7.5, <0.8.0',
             'thrift>=0.9.2',

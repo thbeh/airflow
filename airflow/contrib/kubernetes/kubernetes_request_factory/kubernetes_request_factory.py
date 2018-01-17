@@ -1,26 +1,29 @@
-# -*- coding: utf-8 -*-
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 from abc import ABCMeta, abstractmethod
 import six
 
 
-class KubernetesRequestFactory():
+class KubernetesRequestFactory:
     """
-    Create requests to be sent to kube API. Extend this class to talk to kubernetes and generate
-    your specific resources. This is equivalent of generating yaml files that can be used by
-    `kubectl`
+    Create requests to be sent to kube API.
+    Extend this class to talk to kubernetes and generate your specific resources.
+    This is equivalent of generating yaml files that can be used by `kubectl`
     """
     __metaclass__ = ABCMeta
 
@@ -45,11 +48,11 @@ class KubernetesRequestFactory():
     @staticmethod
     def add_secret_to_env(env, secret):
         env.append({
-            'name':secret.deploy_target,
-            'valueFrom':{
-                'secretKeyRef':{
-                    'name':secret.secret,
-                    'key':secret.key
+            'name': secret.deploy_target,
+            'valueFrom': {
+                'secretKeyRef': {
+                    'name': secret.secret,
+                    'key': secret.key
                 }
             }
         })
@@ -97,14 +100,14 @@ class KubernetesRequestFactory():
         for idx, vol in enumerate(vol_secrets):
             vol_id = 'secretvol' + str(idx)
             req['spec']['containers'][0]['volumeMounts'].append({
-                'mountPath':vol.deploy_target,
-                'name':vol_id,
-                'readOnly':True
+                'mountPath': vol.deploy_target,
+                'name': vol_id,
+                'readOnly': True
             })
             req['spec']['volumes'].append({
-                'name':vol_id,
-                'secret':{
-                    'secretName':vol.secret
+                'name': vol_id,
+                'secret': {
+                    'secretName': vol.secret
                 }
             })
 
@@ -114,7 +117,7 @@ class KubernetesRequestFactory():
         if len(pod.envs) > 0 or len(env_secrets) > 0:
             env = []
             for k in pod.envs.keys():
-                env.append({'name':k, 'value':pod.envs[k]})
+                env.append({'name': k, 'value': pod.envs[k]})
             for secret in env_secrets:
                 KubernetesRequestFactory.add_secret_to_env(env, secret)
             req['spec']['containers'][0]['env'] = env
@@ -129,16 +132,20 @@ class KubernetesRequestFactory():
         if pod.resources.has_requests():
             req['spec']['containers'][0]['resources']['requests'] = {}
             if pod.resources.request_memory:
-                req['spec']['containers'][0]['resources']['requests']['memory'] = pod.resources.request_memory
+                req['spec']['containers'][0]['resources']['requests'][
+                    'memory'] = pod.resources.request_memory
             if pod.resources.request_cpu:
-                req['spec']['containers'][0]['resources']['requests']['cpu'] = pod.resources.request_cpu
+                req['spec']['containers'][0]['resources']['requests'][
+                    'cpu'] = pod.resources.request_cpu
 
         if pod.resources.has_limits():
             req['spec']['containers'][0]['resources']['limits'] = {}
             if pod.resources.request_memory:
-                req['spec']['containers'][0]['resources']['limits']['memory'] = pod.resources.limit_memory
+                req['spec']['containers'][0]['resources']['limits'][
+                    'memory'] = pod.resources.limit_memory
             if pod.resources.request_cpu:
-                req['spec']['containers'][0]['resources']['limits']['cpu'] = pod.resources.limit_cpu
+                req['spec']['containers'][0]['resources']['limits'][
+                    'cpu'] = pod.resources.limit_cpu
 
     @staticmethod
     def extract_init_containers(pod, req):

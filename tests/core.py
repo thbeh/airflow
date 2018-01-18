@@ -589,6 +589,7 @@ class CoreTest(unittest.TestCase):
         t.resolve_template_files()
 
     def test_import_examples(self):
+        [print(f) for f in self.dagbag.dags]
         self.assertEqual(len(self.dagbag.dags), NUM_EXAMPLE_DAGS)
 
     def test_local_task_job(self):

@@ -24,7 +24,7 @@ from kubernetes import watch, client
 from kubernetes.client.rest import ApiException
 from airflow.contrib.kubernetes.pod_launcher import PodLauncher
 from airflow.contrib.kubernetes.kube_client import get_kube_client
-from airflow.contrib.kubernetes.worker_configuration import WorkerConfiguration
+from airflow.contrib.kubernetes.worker_configuration import WorkerGenerator
 from airflow.executors.base_executor import BaseExecutor
 from airflow.executors import Executors
 from airflow.models import TaskInstance, KubeResourceVersion
@@ -243,7 +243,7 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
         self.log.debug("k8s: using namespace {}".format(self.namespace))
         self.kube_client = kube_client
         self.launcher = PodLauncher(kube_client=self.kube_client)
-        self.worker_configuration = WorkerConfiguration(kube_config=self.kube_config)
+        self.worker_configuration = WorkerGenerator(kube_config=self.kube_config)
         self.watcher_queue = multiprocessing.Queue()
         self._session = session
         self.kube_watcher = self._make_kube_watcher()
@@ -277,7 +277,7 @@ class AirflowKubernetesScheduler(LoggingMixin, object):
         self.log.debug("k8s: launching image {}".format(self.kube_config.kube_image))
         pod = self.worker_configuration.make_pod(
             namespace=self.namespace, pod_id=self._create_pod_id(dag_id, task_id),
-            dag_id=dag_id, task_id=task_id, 
+            dag_id=dag_id, task_id=task_id,
             execution_date=self._datetime_to_label_safe_datestring(execution_date),
             airflow_command=command, kube_executor_config=kube_executor_config
         )

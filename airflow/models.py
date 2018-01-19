@@ -1831,7 +1831,7 @@ class TaskInstance(Base, LoggingMixin):
 
     def xcom_pull(
             self,
-            task_ids,
+            task_ids=None,
             dag_id=None,
             key=XCOM_RETURN_KEY,
             include_prior_dates=False):
@@ -2840,7 +2840,7 @@ class BaseOperator(LoggingMixin):
     def xcom_pull(
             self,
             context,
-            task_ids,
+            task_ids=None,
             dag_id=None,
             key=XCOM_RETURN_KEY,
             include_prior_dates=None):

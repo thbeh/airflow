@@ -116,17 +116,10 @@ def get_task_instance_table(postgres_pod=None):
     return stdout
 
 
-def get_all_pods():
-    stdout, stderr= run_command("""kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}'""")
-    return stdout.split("\n")
-
-
 def dump_all_pods():
-    pods = get_all_pods()
-
-    for pod in pods:
-        stdout, stderr = run_command("kubectl describe pod {}".format(pod))
-        print(stdout)
+    stdout, stderr = run_command("kubectl describe pods")
+    print(stdout)
+    print(stderr)
 
 
 def get_dag_run_state(dag_id, run_id, postgres_pod=None):

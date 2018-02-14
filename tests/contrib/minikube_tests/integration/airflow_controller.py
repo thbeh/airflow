@@ -111,9 +111,22 @@ def get_task_instance_table(postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
     stdout, stderr = run_command_in_pod(
         postgres_pod, "postgres",
-        """psql airflow -c "select * from task_instance" """
+        """psql airflow -c "select task_id, dag_id, state from task_instance" """
     )
     return stdout
+
+
+def get_all_pods():
+    stdout, stderr= run_command("""kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}'""")
+    return stdout.split("\n")
+
+
+def dump_all_pods():
+    pods = get_all_pods()
+
+    for pod in pods:
+        stdout, stderr = run_command("kubectl describe pod {}".format(pod))
+        print(stdout)
 
 
 def get_dag_run_state(dag_id, run_id, postgres_pod=None):
@@ -164,3 +177,5 @@ def capture_logs_for_failure(state):
         print(get_dag_run_table())
         print("task_instance")
         print(get_task_instance_table())
+        print("pod dump")
+        dump_all_pods()

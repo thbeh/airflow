@@ -18,8 +18,7 @@ from uuid import uuid4
 
 from tests.contrib.minikube_tests.integration.airflow_controller\
     import DagRunState, RunCommandError, \
-    dag_final_state, get_dag_run_state, kill_scheduler, run_command, run_dag,\
-    get_scheduler_logs
+    dag_final_state, get_dag_run_state, kill_scheduler, run_command, run_dag
 
 try:
     run_command("kubectl get pods")
@@ -36,12 +35,6 @@ class KubernetesExecutorTest(unittest.TestCase):
         dag_id, run_id = "example_python_operator", uuid4().hex
         run_dag(dag_id, run_id)
         state = dag_final_state(dag_id, run_id, timeout=120)
-        if state != DagRunState.SUCCESS:
-            stdout, stderr = get_scheduler_logs()
-            for line in stdout.lines():
-                print(line)
-            for line in stderr.lines():
-                print(line)
         self.assertEquals(state, DagRunState.SUCCESS)
 
     @unittest.skipIf(SKIP_KUBE,
@@ -66,7 +59,7 @@ class KubernetesExecutorTest(unittest.TestCase):
         run_dag(dag_id, run_id)
 
         self.assertEquals(get_dag_run_state(dag_id, run_id), DagRunState.RUNNING)
-        self.assertEquals(dag_final_state(dag_id, run_id, timeout=180),
+        self.assertEquals(dag_final_state(dag_id, run_id, timeout=300),
                           DagRunState.SUCCESS)
 
 

@@ -244,7 +244,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
             self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
             self.log.info("Event: {} Succeeded".format(pod_id))
-            self.watcher_queue.put((pod_id, None, labels, resource_version))
+            self.watcher_queue.put((pod_id, State.SUCCESS, labels, resource_version))
         elif status == 'Running':
             self.log.info("Event: {} is Running".format(pod_id))
         else:
@@ -540,7 +540,7 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
             results = self.result_queue.get()
             key, state, pod_id, resource_version = results
             last_resource_version = resource_version
-            self.log.info("Changing state of {}".format(results))
+            self.log.info("Changing state of {} to {}".format(results, state))
             self._change_state(key, state, pod_id)
 
         KubeResourceVersion.checkpoint_resource_version(
@@ -554,7 +554,7 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
         if state != State.RUNNING:
             self.kube_scheduler.delete_pod(pod_id)
             try:
-                print("popping: {}".format(str(key)))
+                self.log.info("popping: {}".format(str(key)))
                 self.running.pop(key)
             except KeyError as k:
                 print("{}".format(k))

@@ -98,6 +98,24 @@ def _parse_state(stdout):
     raise Exception("Unknown psql output: {}".format(stdout))
 
 
+def get_dag_run_table(postgres_pod=None):
+    postgres_pod = postgres_pod or _get_postgres_pod()
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select * from dag_run" """
+    )
+    return stdout
+
+
+def get_task_instance_table(postgres_pod=None):
+    postgres_pod = postgres_pod or _get_postgres_pod()
+    stdout, stderr = run_command_in_pod(
+        postgres_pod, "postgres",
+        """psql airflow -c "select * from task_instance" """
+    )
+    return stdout
+
+
 def get_dag_run_state(dag_id, run_id, postgres_pod=None):
     postgres_pod = postgres_pod or _get_postgres_pod()
     stdout, stderr = run_command_in_pod(
@@ -115,6 +133,7 @@ def dag_final_state(dag_id, run_id, postgres_pod=None, poll_interval=1, timeout=
     for _ in range(0, timeout / poll_interval):
         dag_state = get_dag_run_state(dag_id, run_id, postgres_pod)
         if dag_state != DagRunState.RUNNING:
+            capture_logs_for_failure(dag_state)
             return dag_state
         time.sleep(poll_interval)
 
@@ -130,3 +149,18 @@ def _kill_pod(pod_name):
 def kill_scheduler():
     airflow_pod = _get_pod_by_grep("^airflow")
     return _kill_pod(airflow_pod)
+
+
+def capture_logs_for_failure(state):
+    if state != DagRunState.SUCCESS:
+        stdout, stderr = get_scheduler_logs()
+        print("stdout:")
+        for line in stdout.split('\n'):
+            print(line)
+        print("stderr:")
+        for line in stderr.split('\n'):
+            print(line)
+        print("dag_run:")
+        print(get_dag_run_table())
+        print("task_instance")
+        print(get_task_instance_table())

@@ -208,7 +208,8 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
         kube_client = get_kube_client()
         while True:
             try:
-                self.resource_version = self._run(kube_client, self.resource_version, self.worker_uuid)
+                self.resource_version = self._run(kube_client, self.resource_version,
+                                                  self.worker_uuid)
             except Exception:
                 self.log.exception("Unknown error in KubernetesJobWatcher. Failing")
                 raise
@@ -244,16 +245,17 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
         return last_resource_version
 
     def process_error(self, event):
-        self.log.error('Encountered Error response from k8s list namespaced pod stream => {}'.format(event))
+        self.log.error("Encountered Error response from k8s list namespaced pod "
+                       "stream => {}".format(event))
         raw_object = event['raw_object']
         if raw_object['code'] == 410:
-            self.log.info('Kubernetes resource version is too old, must reset to 0 => {}'.format(raw_object['message']))
+            self.log.info('Kubernetes resource version is too old, must '
+                          'reset to 0 => {}'.format(raw_object['message']))
             # Return resource version 0
             return '0'
         raise AirflowException(
-            'Kubernetes failure for {} with code {} and message: {}'.format(raw_object['reason'],
-                                                                            raw_object['code'],
-                                                                            raw_object['message']))
+            'Kubernetes failure for {} with code {} and message: {}'
+            .format(raw_object['reason'], raw_object['code'], raw_object['message']))
 
     def process_status(self, pod_id, status, labels, resource_version):
         if status == 'Pending':
@@ -273,7 +275,8 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
 
 
 class AirflowKubernetesScheduler(LoggingMixin, object):
-    def __init__(self, kube_config, task_queue, result_queue, session, kube_client, worker_uuid):
+    def __init__(self, kube_config, task_queue, result_queue,
+                 session, kube_client, worker_uuid):
         self.log.debug("creating kubernetes executor")
         self.kube_config = kube_config
         self.task_queue = task_queue
@@ -479,7 +482,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
                 len(queued_tasks)))
 
         for t in queued_tasks:
-            kwargs = dict(label_selector="dag_id={},task_id={},execution_date={},airflow-worker={}".format(
+            kwargs = dict(label_selector="dag_id={},task_id={},"
+                                         "execution_date={},airflow-worker={}".format(
                 t.dag_id, t.task_id,
                 AirflowKubernetesScheduler._datetime_to_label_safe_datestring(
                     t.execution_date), self.worker_uuid
@@ -534,7 +538,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
     def start(self):
         self.log.info('k8s: starting kubernetes executor')
         self._session = settings.Session()
-        self.worker_uuid = KubeWorkerIdentifier.get_or_create_current_kube_worker_uuid(self._session)
+        self.worker_uuid = KubeWorkerIdentifier.get_or_create_current_kube_worker_uuid(
+            self._session)
         self.log.debug('k8s: starting with worker_uuid: {}'.format(self.worker_uuid))
         # always need to reset resource version since we don't know
         # when we last started, note for behavior below

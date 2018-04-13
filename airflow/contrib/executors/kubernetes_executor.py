@@ -482,12 +482,11 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
                 len(queued_tasks)))
 
         for t in queued_tasks:
-            kwargs = dict(label_selector="dag_id={},task_id={},"
-                                         "execution_date={},airflow-worker={}".format(
-                t.dag_id, t.task_id,
-                AirflowKubernetesScheduler._datetime_to_label_safe_datestring(
-                    t.execution_date), self.worker_uuid
-            ))
+            dict_string = "dag_id={},task_id={},execution_date={},airflow-worker={}"\
+                .format(t.dag_id, t.task_id,
+                        AirflowKubernetesScheduler._datetime_to_label_safe_datestring(
+                            t.execution_date), self.worker_uuid)
+            kwargs = dict(label_selector=dict_string)
             pod_list = self.kube_client.list_namespaced_pod(
                 self.kube_config.kube_namespace, **kwargs)
             if len(pod_list.items) == 0:

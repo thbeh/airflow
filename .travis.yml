@@ -19,6 +19,8 @@
 sudo: true
 dist: trusty
 language: python
+cache: pip
+
 jdk:
   - oraclejdk8
 services:

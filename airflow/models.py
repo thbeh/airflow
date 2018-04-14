@@ -5139,7 +5139,6 @@ class KubeResourceVersion(Base):
     @staticmethod
     @provide_session
     def reset_resource_version(session=None):
-        KubeResourceVersion.log.debug('Reset resource version')
         session.query(KubeResourceVersion).update({
             KubeResourceVersion.resource_version: '0'
         })

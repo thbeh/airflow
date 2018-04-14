@@ -42,6 +42,21 @@ spec:
     requests:
       storage: 10Gi
 ---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-rbac
+subjects:
+  - kind: ServiceAccount
+    # Reference to upper's `metadata.name`
+    name: default
+    # Reference to upper's `metadata.namespace`
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
@@ -186,7 +201,7 @@ data:
     airflow_configmap = airflow-configmap
     worker_container_repository = airflow/ci
     worker_container_tag = latest
-    delete_worker_pods = False
+    delete_worker_pods = True
     git_repo = https://github.com/grantnicholas/testdags.git
     git_branch = master
     dags_volume_claim = airflow-dags

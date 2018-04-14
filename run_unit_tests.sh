@@ -68,7 +68,7 @@ if [ "${TRAVIS}" ]; then
   sudo ln -s "${VIRTUAL_ENV}/bin/airflow" /usr/local/bin/
 else
     if [ -z "$nose_args" ]; then
-      nose_args="--with-coverage \
+      nose_args="tests.contrib.minikube_tests --with-coverage \
     --cover-erase \
     --cover-html \
     --cover-package=airflow \

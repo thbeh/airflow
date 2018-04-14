@@ -1584,7 +1584,7 @@ class SchedulerJob(BaseJob):
                 try:
                     psutil.wait_procs(
                         child_processes, timeout=timeout,
-                        callback=lambda x: self.log.info('Terminated PID %s', x.pid))
+                        callback=lambda x: self.log.debug('Terminated PID %s', x.pid))
                 except psutil.TimeoutExpired:
                     self.log.debug("Ran out of time while waiting for processes to exit")
 

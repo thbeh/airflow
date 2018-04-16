@@ -133,7 +133,7 @@ def dag_final_state(dag_id, run_id, postgres_pod=None, poll_interval=1, timeout=
     for _ in range(0, timeout / poll_interval):
         dag_state = get_dag_run_state(dag_id, run_id, postgres_pod)
         if dag_state != DagRunState.RUNNING:
-            capture_logs_for_failure(dag_state)
+            # capture_logs_for_failure(dag_state)
             return dag_state
         time.sleep(poll_interval)
 

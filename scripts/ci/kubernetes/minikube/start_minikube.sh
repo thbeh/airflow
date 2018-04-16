@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# This script was based on one made by @kimoonkim for kubernetes-hdfs
+
 #!/usr/bin/env bash
 
 _MY_SCRIPT="${BASH_SOURCE[0]}"

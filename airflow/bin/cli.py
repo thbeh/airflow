@@ -21,19 +21,13 @@
 from __future__ import print_function
 import logging
 
-import reprlib
 
 import os
-import socket
 import subprocess
 import textwrap
 from importlib import import_module
 
-import daemon
-import psutil
-import re
 import getpass
-from urllib.parse import urlunparse
 import reprlib
 import argparse
 from builtins import input

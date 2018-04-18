@@ -194,8 +194,10 @@ data:
     sql_alchemy_conn = $SQL_ALCHEMY_CONN
 
     [scheduler]
-    dag_dir_list_interval = 60
+    dag_dir_list_interval = 300
     child_process_log_directory = /root/airflow/logs/scheduler
+    min_file_parsing_loop_time = 30
+    min_file_process_interval = 30
 
     [kubernetes]
     airflow_configmap = airflow-configmap

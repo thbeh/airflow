@@ -563,8 +563,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
         self.task_queue.put((key, command, kube_executor_config))
 
     def sync(self):
-        self.log.info("self.running: {}".format(self.running))
-        self.log.info("self.queued: {}".format(self.queued_tasks))
+        self.log.debug("self.running: {}".format(self.running))
+        self.log.debug("self.queued: {}".format(self.queued_tasks))
         self.kube_scheduler.sync()
 
         last_resource_version = None

@@ -108,8 +108,6 @@ class BaseExecutor(LoggingMixin):
 
     def heartbeat(self):
         # Triggering new jobs
-        self.log.info("xxx: HEARTBEATING")
-
         if not self.parallelism:
             open_slots = len(self.queued_tasks)
         else:
@@ -150,7 +148,6 @@ class BaseExecutor(LoggingMixin):
         self.sync()
 
     def change_state(self, key, state):
-        print("popping: {}".format(key))
         self.running.pop(key)
         self.event_buffer[key] = state
 

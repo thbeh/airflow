@@ -27,18 +27,6 @@ kubectl apply -f $DIRNAME/postgres.yaml
 sed -e "s#{{docker_image}}#$IMAGE#g" -e "s#{{docker_tag}}#$TAG#g" $DIRNAME/airflow.yaml.template > $DIRNAME/.generated/airflow.yaml && kubectl apply -f $DIRNAME/.generated/airflow.yaml
 
 # wait for up to 10 minutes for everything to be deployed
-# deploy postgres first
-for i in {1..75}
-do
-  echo "------- Running kubectl get pods for postgres -------"
-  PODS=$(kubectl get pods | awk 'NR>1 {print $0}')
-  echo "$PODS"
-  NUM_POSTGRES_READY=$(echo $PODS | grep postgres | awk '{print $2}' | grep -E '([0-9])\/(\1)' | wc -l | xargs)
-  if [ "$NUM_POSTGRES_READY" == "1" ]; then
-    break
-  fi
-  sleep 4
-done
 
 for i in {1..150}
 do

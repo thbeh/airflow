@@ -205,8 +205,6 @@ data:
     # How many seconds to wait between file-parsing loops to prevent the logs from being spammed.
     min_file_parsing_loop_time = 1
 
-    dag_dir_list_interval = 300
-
     [kubernetes]
     airflow_configmap = airflow-configmap
     worker_container_repository = {{docker_image}}

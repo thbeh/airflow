@@ -54,7 +54,8 @@ class KubernetesExecutorTest(unittest.TestCase):
 
     @unittest.skip
     # @unittest.skipIf(SKIP_KUBE,
-    #                  'Kubernetes integration tests are unsupported by this configuration')
+    #                  'Kubernetes integration tests are unsupported by this configuration
+    # ')
     def test_kubernetes_executor_config_works(self):
         dag_id, run_id = "example_kubernetes_executor", uuid4().hex
         run_dag(dag_id, run_id)

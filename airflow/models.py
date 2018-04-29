@@ -1113,7 +1113,7 @@ class TaskInstance(Base, LoggingMixin):
     @provide_session
     def delete(self, session=None):
         TI = TaskInstance
-        ti = session.query(TI).filter(
+        session.query(TI).filter(
             TI.dag_id == self.dag_id,
             TI.task_id == self.task_id,
             TI.execution_date == self.execution_date,

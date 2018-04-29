@@ -26,9 +26,7 @@ from pendulum import Pendulum
 import psutil
 from argparse import Namespace
 from airflow import settings
-from airflow.models import TaskInstance
-from airflow.bin.cli import get_num_ready_workers_running, kube_run, get_dag, run
-from airflow.configuration import conf
+from airflow.bin.cli import get_num_ready_workers_running, kube_run
 from airflow.utils.state import State
 from airflow.settings import Session
 from airflow import models
@@ -47,6 +45,7 @@ def reset(dag_id):
     tis.delete()
     session.commit()
     session.close()
+
 
 def create_mock_args(
     task_id,
@@ -86,6 +85,7 @@ def create_mock_args(
     args.raw = raw
     args.interactive = interactive
     return args
+
 
 class TestCLI(unittest.TestCase):
     def setUp(self):
@@ -132,9 +132,6 @@ class TestCLI(unittest.TestCase):
         p.terminate()
         p.wait()
 
-
-
-
     def test_kube_run(self):
         args = create_mock_args(
             task_id='print_the_context',
@@ -156,20 +153,20 @@ class TestCLI(unittest.TestCase):
             state = ti.current_state()
             self.assertEqual(state, State.SUCCESS)
 
-    def test_kube_run_faulty_argument(self):
-        args = create_mock_args(
-            task_id='print_the_context',
-            dag_id='example_python_operator',
-            subdir='/root/dags/example_python_operator.py',
-            execution_date=Pendulum.parse('2018-04-27T08:39:51.298439+00:00')
-        )
-
-        # dag = get_dag(args)
-        # task = dag.get_task(task_id=args.task_id) # type: TaskInstance
-        # ti = TaskInstance(task, args.execution_date)
-        # ti.delete()
-
-        with patch('argparse.Namespace', args):
-            ti = run(args)
-            state = ti.current_state()
-            print(state)
+    # def test_kube_run_faulty_argument(self):
+    #     args = create_mock_args(
+    #         task_id='print_the_context',
+    #         dag_id='example_python_operator',
+    #         subdir='/root/dags/example_python_operator.py',
+    #         execution_date=Pendulum.parse('2018-04-27T08:39:51.298439+00:00')
+    #     )
+    #
+    #     # dag = get_dag(args)
+    #     # task = dag.get_task(task_id=args.task_id) # type: TaskInstance
+    #     # ti = TaskInstance(task, args.execution_date)
+    #     # ti.delete()
+    #
+    #     with patch('argparse.Namespace', args):
+    #         ti = run(args)
+    #         state = ti.current_state()
+    #         print(state)

@@ -31,11 +31,11 @@ class WorkerConfiguration(logging_mixin.LoggingMixin):
     def __init__(self, kube_config):
         self.kube_config = kube_config
         self.worker_airflow_home = conf.safe_get('kubernetes', 'worker_airflow_home',
-                                         self.kube_config.airflow_home)
+                                                 self.kube_config.airflow_home)
         self.worker_airflow_dags = conf.safe_get('kubernetes', 'worker_airflow_dags',
-                                         self.kube_config.dags_folder)
+                                                 self.kube_config.dags_folder)
         self.worker_airflow_logs = conf.safe_get('kubernetes', 'worker_airflow_logs',
-                                         self.kube_config.base_log_folder)
+                                                 self.kube_config.base_log_folder)
         super(WorkerConfiguration, self).__init__()
 
     def _get_init_containers(self, volume_mounts):

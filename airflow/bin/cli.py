@@ -580,13 +580,13 @@ def kube_run(args, dag=None):
         passed_in_params = json.loads(args.task_params)
         task.params.update(passed_in_params)
     ti = TaskInstance(task, args.execution_date)
-    ti.set_state(state=state.State.RUNNING)
 
     if args.dry_run:
         ti.dry_run()
     else:
-        log.info("running task {}".format(args.task_id))
-        ti.run(ignore_task_deps=True, ignore_ti_state=True, test_mode=True)
+        log.info("running task {} starting state {}".format(args.task_id, ti.state))
+        ti.run(ignore_task_deps=True, ignore_ti_state=True, test_mode=True,kube_mode=True)
+        log.info("final state: {}".format(ti.state))
         ti.set_state(ti.state)
         return ti
 

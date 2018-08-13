@@ -150,6 +150,10 @@ class KubeConfig:
         # This prop may optionally be set for PV Claims and is used to write logs
         self.logs_volume_claim = conf.get(self.kubernetes_section, 'logs_volume_claim')
 
+        # This mode will allow users to bypass both dag_volume and git_mode if they want
+        #  to include dag in their airflow image
+        self.dags_in_image = conf.get(self.kubernetes_section, 'dags_in_image')
+
         # This prop may optionally be set for PV Claims and is used to locate DAGs
         # on a SubPath
         self.dags_volume_subpath = conf.get(
@@ -197,10 +201,14 @@ class KubeConfig:
         self._validate()
 
     def _validate(self):
-        if not self.dags_volume_claim and (not self.git_repo or not self.git_branch):
+        if not self.dags_volume_claim and self.working_git_mode() and \
+            not self.dags_in_image:
             raise AirflowConfigException(
                 'In kubernetes mode the following must be set in the `kubernetes` '
                 'config section: `dags_volume_claim` or `git_repo and git_branch`')
+
+    def working_git_mode(self):
+        return (not self.git_repo or not self.git_branch)
 
 
 class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):

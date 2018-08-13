@@ -17,5 +17,6 @@
 #  specific language governing permissions and limitations      *
 #  under the License.                                           *
 
+echo "switching to baked-in mode"
 kubectl delete -f $DIRNAME/configmaps.yaml
 kubectl apply -f $DIRNAME/configmaps_dags_in_image.yaml

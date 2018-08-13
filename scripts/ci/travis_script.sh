@@ -48,6 +48,7 @@ else
                      --with-timer \
                      -v \
                      --logging-level=DEBUG && \
+    $DIRNAME/kubernetes/kube/dags_in_image_config.sh
     tox -e $TOX_ENV -- tests.contrib.minikube.executor_dags_in_image_mode \
                      --with-coverage \
                      --cover-erase \

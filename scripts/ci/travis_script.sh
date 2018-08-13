@@ -26,7 +26,29 @@ then
   tox -e $TOX_ENV
 else
   KUBERNETES_VERSION=${KUBERNETES_VERSION} $DIRNAME/kubernetes/setup_kubernetes.sh && \
-  tox -e $TOX_ENV -- tests.contrib.minikube \
+  tox -e $TOX_ENV -- tests.contrib.minikube.pod_operator \
+                     --with-coverage \
+                     --cover-erase \
+                     --cover-html \
+                     --cover-package=airflow \
+                     --cover-html-dir=airflow/www/static/coverage \
+                     --with-ignore-docstrings \
+                     --rednose \
+                     --with-timer \
+                     -v \
+                     --logging-level=DEBUG && \
+    tox -e $TOX_ENV -- tests.contrib.minikube.executor_git_mode \
+                     --with-coverage \
+                     --cover-erase \
+                     --cover-html \
+                     --cover-package=airflow \
+                     --cover-html-dir=airflow/www/static/coverage \
+                     --with-ignore-docstrings \
+                     --rednose \
+                     --with-timer \
+                     -v \
+                     --logging-level=DEBUG && \
+    tox -e $TOX_ENV -- tests.contrib.minikube.executor_dags_in_image_mode \
                      --with-coverage \
                      --cover-erase \
                      --cover-html \

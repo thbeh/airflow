@@ -43,6 +43,7 @@ before_install:
   - sudo ls -lh $HOME/.cache/pip/
   - sudo rm -rf $HOME/.cache/pip/* $HOME/.wheelhouse/*
   - sudo chown -R travis:travis $HOME/.cache/pip
+  - ./scripts/ci/docker-registry.sh
 install:
   # Use recent docker-compose version
   - sudo rm /usr/local/bin/docker-compose

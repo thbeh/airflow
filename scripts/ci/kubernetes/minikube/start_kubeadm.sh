@@ -11,7 +11,7 @@ esac
 echo "Local OS is ${_MY_OS}"
 _KUBERNETES_VERSION="${KUBERNETES_VERSION}"
 if [ "$_MY_OS" = "linux" ]; then
-    export _REGISTRY_IP=10.192.0.1
+    export _REGISTRY_IP="10.192.0.1"
 else
     export _REGISTRY_IP=`ipconfig getifaddr en0`
 fi
@@ -25,7 +25,8 @@ wget https://cdn.rawgit.com/kubernetes-sigs/kubeadm-dind-cluster/master/fixed/di
 
 chmod +x $_MY_DIR/dind-cluster-v1.10.sh
 $_MY_DIR/dind-cluster-v1.10.sh clean
-DIND_INSECURE_REGISTRIES="[\"10.255.146.185:5000\"]" $_MY_DIR/dind-cluster-v1.10.sh up
+echo "registries are "[\"${_REGISTRY_IP}:5000\"]""
+DIND_INSECURE_REGISTRIES="[\"${_REGISTRY_IP}:5000\"]" DIND_SUBNET="10.192.0.0" DIND_SUBNET_SIZE=16 $_MY_DIR/dind-cluster-v1.10.sh up
 export PATH="$HOME/.kubeadm-dind-cluster:$PATH"
 
 if [[ ! -x /usr/local/bin/kubectl ]]; then
@@ -43,7 +44,7 @@ if [ -n "$REG" ]; then
 fi
 
 if [ "$_MY_OS" = "linux" ]; then
-    docker run -d -p 10.192.0.1:5000:5000 --restart=always --name registry registry:2
+    docker run -d -p :5000:5000 --restart=always --name registry registry:2
 else
     docker run -d -p 5000:5000 --restart=always --name registry registry:2
 fi

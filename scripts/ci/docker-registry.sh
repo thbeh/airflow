@@ -13,10 +13,12 @@ if [ "$_MY_OS" = "linux" ]; then
 else
     export _REGISTRY_IP=`ipconfig getifaddr en0`
 fi
-
-
+echo "Deploying insecure registry"
 if [ "$_MY_OS" = "linux" ]; then
-    sudo sed -i "s/\DOCKER_OPTS=\"/DOCKER_OPTS=\"--insecure-registry=${_REGISTRY_IP}:5000 /g" /etc/default/docker
+    DIRNAME=$(cd "$(dirname "$0")"; pwd)
+#    sudo rm /etc/docker/daemon.json
+#    sudo cp $DIRNAME/daemon.json /etc/docker/
+    sudo sed -i "s/\DOCKER_OPTS=\"/DOCKER_OPTS=\"--insecure-registry=$_REGISTRY_IP:5000 /g" /etc/default/docker
     sudo cat /etc/default/docker
     sudo service docker restart
 fi

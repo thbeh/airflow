@@ -23,12 +23,10 @@ from .operators import *
 from .hive_operator import *
 try:
     check_call(["kubectl", "get", "pods"])
-    from .s3_to_hive_operator import *
 except Exception as e:
-    raise unittest.SkipTest(
-        "Kubernetes integration tests require a minikube cluster;"
-        "Skipping tests {}".format(e)
-    )
+    print(e)
+    from .s3_to_hive_operator import *
+    pass
 from .python_operator import *
 from .latest_only_operator import *
 

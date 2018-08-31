@@ -52,6 +52,7 @@ install:
   - curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
+  - psql -c 'create database airflow;' -U postgres
   - pip install --upgrade pip
   - pip install tox
   - pip install codecov
